@@ -15,3 +15,5 @@ storage/logs/
 .DS_Store
 .idea/
 .vscode/
+
+structure.txt
