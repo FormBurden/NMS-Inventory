@@ -21,3 +21,55 @@ structure.txt
 cache/
 .cache*
 public/data/*
+
+# --- OS & editor junk ---
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# --- Secrets / env ---
+.env
+*.env
+.env.local
+
+# --- Python build/analysis ---
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.venv/
+venv/
+
+# --- PHP/Composer (if used later) ---
+vendor/
+
+# --- Project caches & generated assets ---
+# AssistantApps package cache + downloaded language/data bundles
+.cache/
+
+# Generated local data for the app
+public/data/items_local.json
+
+# Generated icons & decoded/cleaned save artifacts
+storage/decoded/
+storage/cleaned/
+storage/icons/
+
+# Debug bundles & archives
+*.tar.gz
+*.tgz
+*.zip
+
+# Logs & temp
+*.log
+logs/
+Log/
+tmp/
+
+# Script outputs (keep these specific so we don't ignore all CSVs)
+ledger.csv
+totals.csv

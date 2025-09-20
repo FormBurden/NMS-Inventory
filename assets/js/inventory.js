@@ -1,80 +1,77 @@
-(function () {
-  // ---- DOM ----
-  const grid = document.getElementById("grid");
-  const search = document.getElementById("search");
-  const includeTech = document.getElementById("includeTech");
+/* NMS Inventory UI – uses local items catalogue (public/data/items_local.json)
+   and your own icon redirector (/api/icon.php). No external API calls. */
 
-  // ---- tiny DOM helper ----
+(() => {
+  // ---------- DOM ----------
+  const els = {
+    grid: document.getElementById("grid"),
+    search: document.getElementById("search"),
+    includeTech: document.getElementById("includeTech"),
+  };
+
+  // ---------- Config ----------
+  const BASE = (window.NMS_BASE || "/").replace(/\/+$/, "");
+  const ENDPOINTS = {
+    items: `${BASE}/data/items_local.json`,
+    inventory: `${BASE}/api/inventory.php`,
+    icon: `${BASE}/api/icon.php`,
+    placeholder: `${BASE}/assets/img/placeholder.png`,
+  };
+
+  // ---------- State ----------
+  const state = {
+    catalogue: {},  // { GAMEID: { name, kind, icon, appId } }
+    rows: [],       // API rows enriched with display_name, icon_url, etc.
+  };
+
+  // ---------- Utils ----------
   function el(tag, props = {}, children = []) {
     const e = document.createElement(tag);
     Object.assign(e, props);
-    for (const c of children) e.appendChild(c);
+    for (const c of [].concat(children)) if (c != null) e.appendChild(c);
     return e;
   }
 
-  // ---- Human-readable name resolver (with cache + graceful fallbacks) ----
-  // ---- at the top, near other globals ----
-  const metaCache = new Map();  // gameId -> {name, kind}
-  let localMeta = {};           // loaded from /assets/items_local.json
-
-  async function loadLocalMeta() {
-    try {
-      const r = await fetch("/assets/items_local.json", { credentials: "same-origin" });
-      if (r.ok) localMeta = await r.json();
-    } catch (_) { /* fine to run without it */ }
+  function normalizeRID(x) {
+    return String(x || "").replace(/^\^/, "").trim().toUpperCase();
   }
 
-  // call this once before first render
-  loadLocalMeta();
-
-  // ---- replace your existing resolveItemMeta with this ----
-  async function resolveItemMeta(gameId) {
-    const key = String(gameId || "").toUpperCase();
-    if (!key) return { name: "", kind: null };
-    if (metaCache.has(key)) return metaCache.get(key);
-
-    // 1) local JSON file (user-editable)
-    if (localMeta[key]) {
-      metaCache.set(key, localMeta[key]);
-      return localMeta[key];
-    }
-
-    // 2) quick built-ins for common families
-    const quick = {
-      LAND1: { name: "Ferrite Dust", kind: "Substance" },
-      LAND2: { name: "Pure Ferrite", kind: "Substance" },
-      LAND3: { name: "Magnetised Ferrite", kind: "Substance" },
-      FUEL1: { name: "Carbon", kind: "Substance" },
-      FUEL2: { name: "Condensed Carbon", kind: "Substance" },
-      YELLOW2: { name: "Copper", kind: "Substance" },
-      WATER2: { name: "Chlorine", kind: "Substance" },
-      LAUNCHFUEL: { name: "Starship Launch Fuel", kind: "Product" },
-      METALPLATING: { name: "Metal Plating", kind: "Product" },
+  function resolveMeta(id) {
+    const gid = normalizeRID(id);
+    const m = state.catalogue[gid] || {};
+    return {
+      id: gid,
+      name: m.name || gid,
+      kind: m.kind || null,      // "Substance" | "Product" | "Technology" | null
+      icon: m.icon || null,      // may be a CDN URL; we still route via icon.php
+      appId: m.appId || null,
     };
-    if (quick[key]) {
-      metaCache.set(key, quick[key]);
-      return quick[key];
-    }
-
-    // 3) readable fallback (no network)
-    const nice =
-      key.replace(/^(\^|U_)/, "")
-        .replace(/_/g, " ")
-        .toLowerCase()
-        .replace(/\b\w/g, c => c.toUpperCase()) || key;
-
-    const meta = { name: nice, kind: null };
-    metaCache.set(key, meta);
-    return meta;
   }
 
+  function iconSrcFor(row) {
+    // Route through PHP so sources can be swapped centrally and to leverage fallbacks
+    const typeHint = encodeURIComponent(row.type || "");
+    return `${ENDPOINTS.icon}?id=${encodeURIComponent(row.resource_id)}${typeHint ? `&type=${typeHint}` : ""}`;
+  }
 
-  // ---- Rendering ----
+  // ---------- Rendering ----------
   function cardRow(r) {
     const img = el("img", {
-      src: r.icon_url, // already built by the API (with &type hint)
-      alt: r.display_name || r.display_id || r.resource_id,
+      src: r.icon_url,
+      alt: r.display_name || r.resource_id,
       loading: "lazy",
+      crossOrigin: "anonymous",
+    });
+
+    // If CDN icon fails, try icon.php without type, then final placeholder
+    img.addEventListener("error", () => {
+      if (!img.dataset.fallback1) {
+        img.dataset.fallback1 = "1";
+        img.src = `${ENDPOINTS.icon}?id=${encodeURIComponent(r.resource_id)}`;
+      } else if (!img.dataset.fallback2) {
+        img.dataset.fallback2 = "1";
+        img.src = ENDPOINTS.placeholder;
+      }
     });
 
     return el("div", { className: "card" }, [
@@ -82,8 +79,8 @@
       el("div", { className: "meta" }, [
         el("div", {
           className: "rid",
-          title: r.display_name || r.display_id || r.resource_id,
-          textContent: r.display_name || r.display_id || r.resource_id,
+          title: r.display_name || r.resource_id,
+          textContent: r.display_name || r.resource_id,
         }),
         el("div", {
           className: "amt",
@@ -93,55 +90,86 @@
     ]);
   }
 
-  let all = [];
-
   function render() {
-    grid.innerHTML = "";
-    const q = (search.value || "").trim().toUpperCase();
-    const rows = q
-      ? all.filter((r) => {
-        const name = String(r.display_name || "").toUpperCase();
-        const rid = String(r.resource_id || "").toUpperCase();
-        const disp = String(r.display_id || "").toUpperCase();
-        return name.includes(q) || rid.includes(q) || disp.includes(q);
-      })
-      : all;
+    if (!els.grid) return;
+    els.grid.innerHTML = "";
 
-    for (const r of rows) grid.appendChild(cardRow(r));
-  }
+    const q = (els.search?.value || "").trim().toLowerCase();
+    let rows = state.rows;
 
-  async function decorateRowsWithNames(rows) {
-    // Resolve names in parallel (but don’t block the UI longer than needed)
-    await Promise.all(
-      rows.map(async (r) => {
-        const meta = await resolveItemMeta(r.resource_id);
-        if (meta?.name) r.display_name = meta.name;
-        // If resolver learned a better kind, you can rebuild icon_url if desired:
-        // if (meta?.kind && meta.kind !== r.type) {
-        //   r.icon_url = `/api/icon.php?id=${encodeURIComponent(r.resource_id)}&type=${encodeURIComponent(meta.kind)}`;
-        // }
-      })
+    if (q) {
+      rows = rows.filter((r) => {
+        const a = (r.display_name || "").toLowerCase();
+        const b = (r.resource_id || "").toLowerCase();
+        const c = (r.display_id || "").toLowerCase();
+        return a.includes(q) || b.includes(q) || c.includes(q);
+      });
+    }
+
+    // Optional: alpha sort by display name for readability
+    rows = rows.slice().sort((x, y) =>
+      String(x.display_name || x.resource_id).localeCompare(String(y.display_name || y.resource_id))
     );
+
+    for (const r of rows) els.grid.appendChild(cardRow(r));
   }
 
-  async function load() {
-    const params = new URLSearchParams();
-    if (includeTech && includeTech.checked) params.set("include_tech", "1");
-
-    const res = await fetch("/api/inventory.php?" + params.toString());
-    const js = await res.json();
-    all = js.rows || [];
-
-    // add human-readable names (non-fatal if network blocks)
+  // ---------- Data loaders ----------
+  async function loadCatalogue() {
     try {
-      await decorateRowsWithNames(all);
-    } catch (_) { }
+      const res = await fetch(ENDPOINTS.items, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Failed to load ${ENDPOINTS.items}`);
+      state.catalogue = await res.json();
+    } catch (e) {
+      console.warn("[inventory] items_local.json unavailable; names/icons may be raw IDs", e);
+      state.catalogue = {};
+    }
+  }
+
+  async function loadInventory() {
+    const params = new URLSearchParams();
+    if (els.includeTech && els.includeTech.checked) params.set("include_tech", "1");
+
+    const url = `${ENDPOINTS.inventory}${params.toString() ? `?${params}` : ""}`;
+    const res = await fetch(url, { cache: "no-store" });
+    const payload = await res.json();
+
+    // Accept either { rows: [...] } or a raw array fallback
+    const rows = Array.isArray(payload?.rows) ? payload.rows : (Array.isArray(payload) ? payload : []);
+
+    state.rows = rows.map((row) => {
+      const rid = normalizeRID(row.resource_id || row.id || row.rid || "");
+      const meta = resolveMeta(rid);
+
+      const enriched = {
+        ...row,
+        resource_id: rid,
+        display_id: row.display_id || rid,
+        display_name: meta.name || row.display_name || rid,
+        type: (meta.kind || row.type || "").toString(),
+      };
+
+      enriched.icon_url = iconSrcFor(enriched);
+      return enriched;
+    });
 
     render();
   }
 
-  if (search) search.addEventListener("input", render);
-  if (includeTech) includeTech.addEventListener("change", load);
+  // ---------- Init ----------
+  async function boot() {
+    // hook events first so quick typing is responsive after first paint
+    if (els.search) els.search.addEventListener("input", render);
+    if (els.includeTech) els.includeTech.addEventListener("change", loadInventory);
 
-  load();
+    await loadCatalogue();   // names/kinds/icons
+    await loadInventory();   // data from DB → then render
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
 })();
+  
