@@ -33,7 +33,7 @@ NMSSAVETOOL="${NMSSAVETOOL:-nmssavetool}"
 mkdir -p "$OUT_DIR"
 
 # Split WATCH_SAVES_DIRS on colon/comma/semicolon/space
-readarray -t WATCH_DIRS < <(printf '%s\n' "$WATCH_SAVES_DIRS" | tr ';:,' '\n' | tr -s ' ' '\n' | sed '/^$/d')
+readarray -t WATCH_DIRS < <(printf '%s\n' "$WATCH_SAVES_DIRS" | tr ';:,' '\n' | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//' -e '/^$/d')
 
 decode_one() {
   local src="$1"

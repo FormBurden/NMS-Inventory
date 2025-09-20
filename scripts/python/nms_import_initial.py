@@ -132,53 +132,87 @@ def _looks_like_json(raw: bytes) -> bool:
     s = raw.lstrip()
     return len(s) > 0 and s[:1] in (b"{", b"[")
 
+def _clean_json_bytes(raw: bytes) -> bytes:
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    if b"\x00" in raw:
+        raw = raw.replace(b"\x00", b"")
+    return raw.strip()
+
+def _looks_like_json(raw: bytes) -> bool:
+    s = raw.lstrip()
+    return len(s) > 0 and s[:1] in (b"{", b"[")
+
 def run_nmssavetool(src: Path, out_json: Path, decoder_hint: str | None) -> None:
     """
-    Decode 'src' .hg into 'out_json' JSON using nmssavetool. We consider it a failure if:
-      - the tool exits nonzero, OR
-      - it produces empty output, OR
-      - the bytes don't look like JSON after cleaning BOM/NUL.
+    Decode 'src' -> 'out_json' using nmssavetool with multiple CLI patterns.
+    We try ALL reasonable forms for the provided decoder path BEFORE falling
+    back to a 'nmssavetool' command on PATH.
     """
     out_json.parent.mkdir(parents=True, exist_ok=True)
-    candidates: list[str] = []
+    sp = shlex.quote(str(src))
+    op = shlex.quote(str(out_json))
+
+    candidate_cmds: list[str] = []
 
     if decoder_hint:
-        hint_path = Path(decoder_hint)
-        if hint_path.exists():
-            candidates.append(f"python3 {shlex.quote(str(hint_path))} {shlex.quote(str(src))}")
-        else:
-            candidates.append(f"{shlex.quote(decoder_hint)} {shlex.quote(str(src))}")
+        hint = shlex.quote(str(Path(decoder_hint)))
+        # Common patterns seen across nmssavetool variants:
+        # stdout-producing:
+        candidate_cmds += [
+            f"python3 {hint} dump {sp}",
+            f"python3 {hint} decode {sp}",
+            f"python3 {hint} {sp}",
+        ]
+        # file-output patterns:
+        candidate_cmds += [
+            f"python3 {hint} -i {sp} -o {op}",
+            f"python3 {hint} --input {sp} --output {op}",
+            f"python3 {hint} {sp} -o {op}",
+        ]
 
-    # Try bare nmssavetool on PATH last
-    candidates.append(f"nmssavetool {shlex.quote(str(src))}")
+    # As the LAST resort, try a PATH command named nmssavetool in similar shapes
+    candidate_cmds += [
+        f"nmssavetool dump {sp}",
+        f"nmssavetool decode {sp}",
+        f"nmssavetool {sp}",
+        f"nmssavetool -i {sp} -o {op}",
+        f"nmssavetool --input {sp} --output {op}",
+        f"nmssavetool {sp} -o {op}",
+    ]
 
-    last_err = ""
-    for base_cmd in candidates:
-        # Mode 1: capture stdout
+    errors: list[str] = []
+
+    for cmd in candidate_cmds:
         try:
-            res = subprocess.run(base_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            raw = _clean_json_bytes(res.stdout or b"")
-            if raw and _looks_like_json(raw):
-                out_json.write_bytes(raw)
+            # Mode A: capture stdout (works when tool prints JSON)
+            res = subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cleaned = _clean_json_bytes(res.stdout or b"")
+            if cleaned and _looks_like_json(cleaned):
+                out_json.write_bytes(cleaned)
                 return
         except subprocess.CalledProcessError as e:
-            last_err = f"{e}\n{getattr(e, 'stderr', b'').decode(errors='ignore')}"
-
-        # Mode 2: ask tool to write to file via -o
-        try:
-            res2 = subprocess.run(f"{base_cmd} -o {shlex.quote(str(out_json))}",
-                                  shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if out_json.exists():
+            errors.append(f"{cmd}\n{getattr(e,'stderr',b'').decode(errors='ignore').strip()}")
+        # Mode B: if the command didn't yield stdout but may have written a file
+        if out_json.exists():
+            try:
                 raw = _clean_json_bytes(out_json.read_bytes())
                 if raw and _looks_like_json(raw):
-                    out_json.write_bytes(raw)  # rewrite cleaned
+                    out_json.write_bytes(raw)
                     return
-        except subprocess.CalledProcessError as e2:
-            last_err = f"{last_err}\n{oct(e2.returncode)}\n{getattr(e2, 'stderr', b'').decode(errors='ignore')}"
+                else:
+                    out_json.unlink(missing_ok=True)
+            except Exception:
+                out_json.unlink(missing_ok=True)
 
-    raise SystemExit(f"[ERR] Failed to decode {src} (no valid JSON). "
-                     f"Hint: set NMSSAVETOOL in .env to the exact nmssavetool.py. Logs: {last_err}")
-# --- end replacement ---
+    raise SystemExit(
+        "[ERR] Failed to decode JSON from save file.\n"
+        f"  src: {src}\n"
+        f"  out: {out_json}\n"
+        f"  decoder: {decoder_hint or 'nmssavetool (PATH)'}\n"
+        "  Tried commands (stderr follows):\n- " + "\n- ".join(errors)
+    )
+
 
 
 def infer_save_root(path: Path) -> str:
