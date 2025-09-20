@@ -13,14 +13,33 @@
   }
 
   // ---- Human-readable name resolver (with cache + graceful fallbacks) ----
-  const metaCache = new Map(); // gameId -> {name, kind}
+  // ---- at the top, near other globals ----
+  const metaCache = new Map();  // gameId -> {name, kind}
+  let localMeta = {};           // loaded from /assets/items_local.json
 
+  async function loadLocalMeta() {
+    try {
+      const r = await fetch("/assets/items_local.json", { credentials: "same-origin" });
+      if (r.ok) localMeta = await r.json();
+    } catch (_) { /* fine to run without it */ }
+  }
+
+  // call this once before first render
+  loadLocalMeta();
+
+  // ---- replace your existing resolveItemMeta with this ----
   async function resolveItemMeta(gameId) {
     const key = String(gameId || "").toUpperCase();
     if (!key) return { name: "", kind: null };
     if (metaCache.has(key)) return metaCache.get(key);
 
-    // 1) Fast local map for the common stuff
+    // 1) local JSON file (user-editable)
+    if (localMeta[key]) {
+      metaCache.set(key, localMeta[key]);
+      return localMeta[key];
+    }
+
+    // 2) quick built-ins for common families
     const quick = {
       LAND1: { name: "Ferrite Dust", kind: "Substance" },
       LAND2: { name: "Pure Ferrite", kind: "Substance" },
@@ -30,49 +49,25 @@
       YELLOW2: { name: "Copper", kind: "Substance" },
       WATER2: { name: "Chlorine", kind: "Substance" },
       LAUNCHFUEL: { name: "Starship Launch Fuel", kind: "Product" },
+      METALPLATING: { name: "Metal Plating", kind: "Product" },
     };
     if (quick[key]) {
       metaCache.set(key, quick[key]);
       return quick[key];
     }
 
-    // 2) Try a public catalogue (optional; ignored if it fails/CORS blocks)
-    try {
-      const resp = await fetch(
-        "/api/item_meta.php?search=" + encodeURIComponent(key),
-        { credentials: "same-origin" }
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const items = Array.isArray(data?.items) ? data.items : [];
-        const hit =
-          items.find((x) => String(x.gameId || "").toUpperCase() === key) ||
-          items[0];
-        if (hit) {
-          const meta = {
-            name: hit.name || key,
-            // prefer Product/Technology signals if present; else assume Substance
-            kind: hit.type === "Product" ? "Product" : hit.isTech ? "Technology" : "Substance",
-          };
-          metaCache.set(key, meta);
-          return meta;
-        }
-      }
-    } catch (_) {
-      // offline / CORS / API change — just fall through to prettified fallback
-    }
-
-    // 3) Prettify the code as a last resort
+    // 3) readable fallback (no network)
     const nice =
-      key
-        .replace(/^(\^|U_)/, "") // strip leading ^ or U_
+      key.replace(/^(\^|U_)/, "")
         .replace(/_/g, " ")
         .toLowerCase()
-        .replace(/\b\w/g, (c) => c.toUpperCase()) || key;
+        .replace(/\b\w/g, c => c.toUpperCase()) || key;
+
     const meta = { name: nice, kind: null };
     metaCache.set(key, meta);
     return meta;
   }
+
 
   // ---- Rendering ----
   function cardRow(r) {
