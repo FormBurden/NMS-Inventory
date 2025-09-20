@@ -1,0 +1,17 @@
+# secrets
+.env
+
+# local caches / outputs
+storage/decoded/
+storage/cleaned/
+storage/icons/
+storage/logs/
+
+# bundles / archives
+*.tar.gz
+*.zip
+
+# OS/editor cruft
+.DS_Store
+.idea/
+.vscode/
