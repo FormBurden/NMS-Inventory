@@ -1,52 +1,47 @@
 <?php
+declare(strict_types=1);
+
 /**
- * External icon resolver (seed map + Fandom fallback).
- * Many product icons are available at:
- *   https://nomanssky.fandom.com/wiki/Category:Product_icons
- * We try an explicit map first; else try "Special:FilePath/<TOKEN>.png" where
- * <TOKEN> is often PRODUCT.X or Product.x depending on the asset. This won’t
- * be perfect for every id, but it gets us started and we can grow the map.
+ * Build an ordered list of candidate external icon URLs for a given resource.
+ * We try the most-specific patterns first, then generic fallbacks.
  */
-function nms_icon_url(string $resourceId, string $resourceType=''): string {
-  // Normalize (game IDs often start with '^')
-  $RID = strtoupper(ltrim($resourceId, '^'));
-  $type = strtolower($resourceType ?? '');
+function nms_icon_candidates(string $resourceId, string $type = ''): array {
+    $rid  = strtoupper($resourceId);
+    $ridT = ltrim($rid, '^'); // display-ish
 
-  // Known filename stems (extend over time)
-  $alias = [
-    'FERRITE_DUST'         => 'Ferrite_Dust_Icon',
-    'PURE_FERRITE'         => 'Pure_Ferrite_Icon',
-    'MAGNETISED_FERRITE'   => 'Magnetised_Ferrite_Icon',
-    'OXYGEN'               => 'Oxygen_Icon',
-    'CARBON'               => 'Carbon_Icon',
-    'ANTIMATTER'           => 'Antimatter_Icon',
-    'WARPCELL'             => 'Warp_Cell_Icon',
-  ];
-  if (isset($alias[$RID])) {
-    return "https://nomanssky.fandom.com/wiki/Special:FilePath/{$alias[$RID]}.png";
-  }
+    $base = 'https://nomanssky.fandom.com/wiki/Special:FilePath/';
+    $out  = [];
 
-  // Try high-hit candidates first
-  $candidates = [
-    "{$RID}_Icon.png",
-    "$RID.png",
-  ];
+    // 1) Product items frequently exist as PRODUCT.^FOO.png (caret kept)
+    if (strcasecmp($type, 'Product') === 0) {
+        $out[] = $base . 'PRODUCT.' . rawurlencode($rid) . '.png';   // e.g. PRODUCT.%5EAMMO.png
+        $out[] = $base . 'PRODUCT.' . rawurlencode($ridT) . '.png';  // e.g. PRODUCT.AMMO.png
+    }
 
-  // Then namespace-style variants
-  if ($type === 'product') {
-    $candidates[] = "PRODUCT.$RID.png";
-    $candidates[] = "Product.$RID.png";
-  } elseif ($type === 'substance') {
-    $candidates[] = "SUBSTANCE.$RID.png";
-    $candidates[] = "Substance.$RID.png";
-  }
+    // 2) Technology sometimes exists as TECHNOLOGY.^FOO.png
+    if (strcasecmp($type, 'Technology') === 0) {
+        $out[] = $base . 'TECHNOLOGY.' . rawurlencode($rid) . '.png';
+        $out[] = $base . 'TECHNOLOGY.' . rawurlencode($ridT) . '.png';
+    }
 
-  foreach ($candidates as $fn) {
-    $safe = preg_replace('/[^A-Za-z0-9._-]+/', '_', $fn);
-    // We don't HEAD-check to keep responses fast; first candidate wins
-    return "https://nomanssky.fandom.com/wiki/Special:FilePath/$safe";
-  }
+    // 3) Generic “NAME_Icon.png” is common across types
+    $out[] = $base . rawurlencode($ridT . '_Icon.png'); // e.g. OXYGEN_Icon.png
 
-  // Should never hit
-  return "https://nomanssky.fandom.com/wiki/Special:FilePath/$RID.png";
+    // 4) As a last resort, try the raw (with caret) “_Icon” shape
+    $out[] = $base . rawurlencode($rid . '_Icon.png');  // e.g. ^AMMO_Icon.png
+
+    // De-duplicate while preserving order
+    $uniq = [];
+    foreach ($out as $u) {
+        if (!isset($uniq[$u])) $uniq[$u] = true;
+    }
+    return array_keys($uniq);
+}
+
+/**
+ * For legacy callers that want a single URL, return the first candidate.
+ */
+function nms_icon_url(string $resourceId, string $type = ''): string {
+    $candidates = nms_icon_candidates($resourceId, $type);
+    return $candidates[0] ?? '';
 }

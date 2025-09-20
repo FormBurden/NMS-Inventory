@@ -19,7 +19,7 @@ try {
                 'resource_id' => $rid,
                 'display_id'  => ltrim($rid, '^'),
                 'amount'      => (int)$amt,
-                'icon_url'    => nms_icon_url($rid, (string)$type),
+                'icon_url'    => '/api/icon.php?id=' . rawurlencode($rid) . '&type=' . rawurlencode((string)$type),
                 'type'        => $type,
             ];
         }

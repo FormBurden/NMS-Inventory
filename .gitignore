@@ -17,3 +17,5 @@ storage/logs/
 .vscode/
 
 structure.txt
+# icon cache
+cache/
