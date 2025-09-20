@@ -45,7 +45,7 @@ $serveCached = function (string $dataFile, string $contentType) use ($browserMax
     header('Content-Length: ' . $size);
     header('ETag: ' . $etag);
     header('Last-Modified: ' . $last);
-    header('Cache-Control: public, max-age=' . $browserMaxAge);
+    header('Cache-Control: public, max-age=' . $browserMaxAge . ', immutable');
     header('Vary: Accept');
 
     if ($_SERVER['REQUEST_METHOD'] === 'HEAD') return true;
