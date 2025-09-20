@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Root of repo
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+# Root of the repo (this script lives in scripts/)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Sanity checks (watcher expects NMS_HG_PATH in .env)
-if [[ ! -f .env ]]; then
-  echo "[ERR] .env is missing at repo root. Copy .env.example and set values." >&2
-  exit 1
+# Defaults (override by exporting HOST/PORT/DOCROOT if you like)
+HOST="${HOST:-localhost}"
+PORT="${PORT:-8080}"
+DOCROOT="${DOCROOT:-public}"
+
+WATCHER="$ROOT_DIR/scripts/watch_saves.sh"
+
+# Start the watcher in the background (if present)
+if [[ -x "$WATCHER" || -f "$WATCHER" ]]; then
+  echo "[dev] starting watcher: $WATCHER"
+  "$WATCHER" &
+  WATCH_PID=$!
+  # Ensure watcher is cleaned up on exit
+  cleanup() { kill "$WATCH_PID" 2>/dev/null || true; }
+  trap cleanup EXIT INT TERM
+else
+  echo "[dev] watcher not found at $WATCHER (skipping)"
 fi
 
-# Start the save-file watcher first (runs pipeline on startup + on changes)
-echo "[*] starting watcher: scripts/watch_saves.sh"
-bash "$ROOT/scripts/watch_saves.sh" &
-WATCH_PID=$!
-
-cleanup() {
-  echo "[*] stopping watcher ($WATCH_PID)…"
-  kill "$WATCH_PID" 2>/dev/null || true
-  wait "$WATCH_PID" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
-
-# Now run the PHP dev server
-echo "[*] PHP dev server: http://localhost:8080  (docroot=public)"
-php -S localhost:8080 -t public
+# Start PHP’s built-in server in the foreground
+echo "[dev] serving on http://$HOST:$PORT (docroot: $DOCROOT)"
+exec php -S "$HOST:$PORT" -t "$ROOT_DIR/$DOCROOT"
