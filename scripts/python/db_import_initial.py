@@ -152,7 +152,7 @@ def walk_items(obj: Any, path_stack: List[str]=None) -> Iterable[Tuple[str,int,s
             path_stack.append(str(idx))
             yield from walk_items(v, path_stack)
             path_stack.pop()
-			
+
 def read_json_lenient(path: Path) -> dict | list:
     """
     Read bytes, strip BOM & NUL, trim, and parse JSON.
@@ -242,7 +242,7 @@ def main() -> None:
         # Parse JSON and prepare item INSERTs
         jpath = Path(out_json)
         try:
-            data = json.loads(jpath.read_text(encoding="utf-8", errors="ignore"))
+            data = read_json_lenient(jpath)
         except Exception as e:
             print(f"[warn] failed to parse JSON {out_json}: {e}", file=sys.stderr)
             continue
