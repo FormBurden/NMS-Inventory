@@ -36,7 +36,7 @@ $serveCached = function (string $dataFile, string $contentType) use ($browserMax
     if ($ifNone === $etag || ($ifMod && strtotime($ifMod) >= $mtime)) {
         header('ETag: ' . $etag);
         header('Last-Modified: ' . $last);
-        header('Cache-Control: public, max-age=' . $browserMaxAge);
+        header('Cache-Control: public, max-age=' . $browserMaxAge . ', immutable');
         http_response_code(304);
         return true;
     }
