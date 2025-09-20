@@ -1,225 +1,119 @@
 #!/usr/bin/env bash
-# watch_saves.sh — watch No Man's Sky save directories and (optionally) decode on changes
-# Reads config from .env at the repo root.
-#
-# Env keys (set these in .env):
-#   WATCH_SAVES_DIRS      = one or more directories (comma or colon separated)
-#   WATCH_REGEX           = (optional) regex of files to react to (default matches *.hg, save.hg, mf_*)
-#   WATCH_DEBOUNCE_SEC    = (optional) debounce per-dir in seconds (default 2)
-#   WATCH_INITIAL_DECODE  = (optional) "true"|"false" — run a decode once at start (default true)
-#
-# Decoder selection (pick ONE approach below, highest priority that is set/available is used):
-#   DECODE_CMD            = exact shell command to run; use __INPUT__ (file path) and __DIR__ (containing dir) placeholders
-#                           Example: DECODE_CMD='python3 /path/nmssavetool.py "__DIR__"'
-#   NMS_ST_CMD            = command template for nmssavetool; use __DIR__ placeholder
-#                           Example: NMS_ST_CMD='python3 /mnt/NMS-Save-Decoder-main/nmssavetool.py "__DIR__"'
-#   NMSSAVETOOL_PY        = path to nmssavetool.py; will run: python3 "$NMSSAVETOOL_PY" "__DIR__"
-#   (legacy fallback)     = scripts/nms_decode_clean.py will be used if present and nothing else is configured
-#
-# Notes:
-# - Works with inotifywait (preferred), fswatch, or a portable polling fallback.
-# - If no decoder is configured, the watcher will still run and log file changes.
-
+# scripts/watch_saves.sh
+# Drop-in replacement: avoids bulk-decoding old saves on startup.
 set -Eeuo pipefail
+IFS=$'\n\t'
 
-# ---------- util ----------
-ts() { date +"%Y-%m-%d %H:%M:%S"; }
-log() { printf "[%s] %s\n" "$(ts)" "$*"; }
-die() { log "[ERR] $*"; exit 1; }
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"   # scripts/ -> repo root
+DOTENV="${REPO_ROOT}/.env"
 
-# ---------- locate repo root & load .env ----------
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
-cd "$ROOT_DIR"
-
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  set -a
+# --- dotenv ---------------------------------------------------------------
+if [[ -f "$DOTENV" ]]; then
   # shellcheck disable=SC1090
-  . "$ROOT_DIR/.env"
-  set +a
+  source "$DOTENV"
 fi
 
-# ---------- collect watch dirs from WATCH_SAVES_DIRS ----------
-# Accept comma, colon, or newline separated
-WATCH_SAVES_DIRS="${WATCH_SAVES_DIRS:-}"
-if [[ -z "$WATCH_SAVES_DIRS" ]]; then
-  die "No watch directories configured.
-Add WATCH_SAVES_DIRS to $ROOT_DIR/.env (comma- or colon-separated).
-Example:
-  WATCH_SAVES_DIRS=\"/mnt/Unlimited-Gaming/Modding/No-Mans-Sky/Saves/Saves,$HOME/.local/share/HelloGames/NMS\""
+# Required: WATCH_SAVES_DIRS from .env
+if [[ -z "${WATCH_SAVES_DIRS:-}" ]]; then
+  echo "[ERR] WATCH_SAVES_DIRS not set in .env"
+  exit 1
 fi
 
-# Normalize separators to commas
-_dirs="${WATCH_SAVES_DIRS//$'\n'/,}"
-_dirs="${_dirs//:/,}"
+# Optional knobs
+WATCH_SAVES_SINCE_DAYS="${WATCH_SAVES_SINCE_DAYS:-30}"
+WATCH_DECODE_ON_START="${WATCH_DECODE_ON_START:-1}"
+OUT_DIR="${DECODE_OUT_DIR:-${REPO_ROOT}/.cache/decoded}"
 
-# Build WATCH_DIRS array; trim whitespace and skip missing dirs with a warning
-IFS=',' read -r -a WATCH_DIRS <<< "$_dirs"
-_tmp=()
-for d in "${WATCH_DIRS[@]}"; do
-  d="${d#"${d%%[![:space:]]*}"}"   # ltrim
-  d="${d%"${d##*[![:space:]]}"}"   # rtrim
-  [[ -z "$d" ]] && continue
-  if [[ ! -d "$d" ]]; then
-    log "[WARN] WATCH_SAVES_DIRS path not found: $d"
-    continue
-  fi
-  _tmp+=("$d")
-done
-WATCH_DIRS=("${_tmp[@]}")
+# Decoder hint:
+# - If NMSSAVETOOL points to a file, we call: python3 <file> <src> > out.json
+# - Else we try bare 'nmssavetool <src> > out.json'
+NMSSAVETOOL="${NMSSAVETOOL:-nmssavetool}"
 
-[[ ${#WATCH_DIRS[@]} -gt 0 ]] || die "No valid watch directories after filtering."
+mkdir -p "$OUT_DIR"
 
-# ---------- config defaults ----------
-WATCH_REGEX="${WATCH_REGEX:-(^|/)(save\.hg|.*\.hg|mf_.*|slot.*|save)$}"
-WATCH_DEBOUNCE_SEC="${WATCH_DEBOUNCE_SEC:-2}"
-WATCH_INITIAL_DECODE="${WATCH_INITIAL_DECODE:-true}"
+# Split WATCH_SAVES_DIRS on colon/comma/semicolon/space
+readarray -t WATCH_DIRS < <(printf '%s\n' "$WATCH_SAVES_DIRS" | tr ';:,' '\n' | tr -s ' ' '\n' | sed '/^$/d')
 
-# ---------- choose watcher backend ----------
-BACKEND="poll"
-if command -v inotifywait >/dev/null 2>&1; then
-  BACKEND="inotify"
-elif command -v fswatch >/dev/null 2>&1; then
-  BACKEND="fswatch"
-fi
+decode_one() {
+  local src="$1"
+  local base name out tmp
+  [[ -f "$src" ]] || return 0
+  [[ "${src##*.}" == "hg" ]] || return 0
 
-# ---------- decoder command resolution ----------
-resolve_decode_cmd() {
-  # $1=input file (may be a directory hint), $2=dir containing the file
-  local input="$1" dir="$2" cmd=""
+  base="$(basename -- "$src")"
+  name="${base%.*}"
+  out="${OUT_DIR}/${name}.json"
+  tmp="${out}.tmp"
 
-  if [[ -n "${DECODE_CMD:-}" ]]; then
-    cmd="${DECODE_CMD//__INPUT__/$input}"
-    cmd="${cmd//__DIR__/$dir}"
-    printf "%s" "$cmd"
-    return 0
+  echo "[decode] $src -> $out"
+
+  if [[ -f "$NMSSAVETOOL" ]]; then
+    # Treat as a python module file
+    if ! python3 "$NMSSAVETOOL" "$src" > "$tmp" 2>/dev/null; then
+      echo "[ERR] decode failed via python3 $NMSSAVETOOL"
+      rm -f "$tmp"
+      return 1
+    fi
+  else
+    # Treat as a command on PATH
+    if ! $NMSSAVETOOL "$src" > "$tmp" 2>/dev/null; then
+      echo "[ERR] decode failed via $NMSSAVETOOL (PATH). Set NMSSAVETOOL in .env to point to nmssavetool.py or binary."
+      rm -f "$tmp"
+      return 1
+    fi
   fi
 
-  if [[ -n "${NMS_ST_CMD:-}" ]]; then
-    cmd="${NMS_ST_CMD//__DIR__/$dir}"
-    printf "%s" "$cmd"
-    return 0
-  fi
-
-  if [[ -n "${NMSSAVETOOL_PY:-}" && -f "$NMSSAVETOOL_PY" ]]; then
-    printf 'python3 "%s" "%s"' "$NMSSAVETOOL_PY" "$dir"
-    return 0
-  fi
-
-  if [[ -f "$ROOT_DIR/../NMS-Save-Decoder-main/nmssavetool.py" ]]; then
-    printf 'python3 "%s" "%s"' "$ROOT_DIR/../NMS-Save-Decoder-main/nmssavetool.py" "$dir"
-    return 0
-  fi
-
-  if [[ -f "$ROOT_DIR/scripts/nms_decode_clean.py" ]]; then
-    # Legacy: expects a file input
-    printf 'python3 "%s" "%s"' "$ROOT_DIR/scripts/nms_decode_clean.py" "$input"
-    return 0
-  fi
-
-  # No decoder configured
-  printf ""
-}
-
-run_decode() {
-  local input="$1" dir="$2"
-  local cmd
-  cmd="$(resolve_decode_cmd "$input" "$dir")" || cmd=""
-  if [[ -z "$cmd" ]]; then
-    log "[dev] No decoder configured. Change detected at: $input"
-    log "      Set DECODE_CMD, NMS_ST_CMD, or NMSSAVETOOL_PY in .env to enable decoding."
-    return 0
-  fi
-
-  log "[dev] decode → $cmd"
-  if ! eval "$cmd"; then
-    log "[ERR] decode failed for: $input"
-    return 1
-  fi
+  mv -f "$tmp" "$out"
   return 0
 }
 
-# ---------- debounce per directory ----------
-declare -A __LAST_RUN=()
-debounced_decode() {
-  local input="$1" dir="$2" now last
-  now="$(date +%s)"
-  last="${__LAST_RUN[$dir]:-0}"
+initial_pass() {
+  local days="$1"
+  local cutoff
+  cutoff="$(date -d "${days} days ago" +%Y-%m-%d)"
+  echo "[info] Initial pass: only files newer than ${cutoff} (${days} days)."
 
-  if (( now - last < WATCH_DEBOUNCE_SEC )); then
-    # Within debounce window; skip
-    return 0
-  fi
-  __LAST_RUN[$dir]="$now"
-  run_decode "$input" "$dir" || true
-}
-
-# ---------- backends ----------
-watch_inotify() {
-  # shellcheck disable=SC2046
-  inotifywait -m -r \
-    -e modify -e close_write -e moved_to -e create \
-    --format '%w%f' \
-    -- "${WATCH_DIRS[@]}" |
-  while IFS= read -r path; do
-    if [[ "$path" =~ $WATCH_REGEX ]]; then
-      debounced_decode "$path" "$(dirname "$path")"
-    fi
-  done
-}
-
-watch_fswatch() {
-  # fswatch outputs paths line-by-line
-  fswatch -0 -r "${WATCH_DIRS[@]}" | while IFS= read -r -d '' path; do
-    if [[ "$path" =~ $WATCH_REGEX ]]; then
-      debounced_decode "$path" "$(dirname "$path")"
-    fi
-  done
-}
-
-watch_poll() {
-  # Portable polling: compute a cheap per-dir change token and compare
-  declare -A TOKENS=()
-  while true; do
-    for d in "${WATCH_DIRS[@]}"; do
-      # Find newest mtime among files matching the regex candidates
-      # (Approximation: check *.hg and mf_* to keep this light.)
-      local newest
-      newest="$(find "$d" -type f \( -name '*.hg' -o -name 'mf_*' -o -name 'save' -o -name 'save.hg' \) -printf '%T@\n' 2>/dev/null | sort -nr | head -n1 || true)"
-      newest="${newest:-0}"
-      if [[ "${TOKENS[$d]:-}" != "$newest" ]]; then
-        TOKENS[$d]="$newest"
-        # Pass a representative input path if we can find one; else just the dir
-        local any
-        any="$(find "$d" -type f \( -name '*.hg' -o -name 'mf_*' -o -name 'save' -o -name 'save.hg' \) -print -quit 2>/dev/null || true)"
-        any="${any:-$d}"
-        debounced_decode "$any" "$d"
-      fi
-    done
-    sleep 1
-  done
-}
-
-# ---------- initial decode (optional) ----------
-if [[ "$WATCH_INITIAL_DECODE" == "true" ]]; then
   for d in "${WATCH_DIRS[@]}"; do
-    # Try a typical save file name first, then fallback to the dir
-    cand=""
-    for n in "save.hg" "save" ; do
-      [[ -f "$d/$n" ]] && { cand="$d/$n"; break; }
-    done
-    cand="${cand:-$d}"
-    run_decode "$cand" "$d" || true
+    [[ -d "$d" ]] || { echo "[warn] Missing dir: $d"; continue; }
+    # GNU find: -newermt supports the readable date form.
+    while IFS= read -r -d '' f; do
+      decode_one "$f"
+    done < <(find "$d" -type f -name '*.hg' -newermt "$cutoff" -print0)
   done
+}
+
+watch_loop() {
+  command -v inotifywait >/dev/null 2>&1 || {
+    echo "[ERR] inotifywait not found. Install inotify-tools."
+    exit 1
+  }
+
+  # Build inotify list
+  local args=()
+  for d in "${WATCH_DIRS[@]}"; do
+    [[ -d "$d" ]] && args+=("$d")
+  done
+  [[ "${#args[@]}" -gt 0 ]] || {
+    echo "[ERR] No valid directories to watch."
+    exit 1
+  }
+
+  echo "[watch] Monitoring for new/updated *.hg files under:"
+  printf '  - %s\n' "${args[@]}"
+
+  inotifywait -m -e close_write,create,move --format '%w%f' "${args[@]}" | \
+  while IFS= read -r path; do
+    [[ "${path##*.}" == "hg" ]] || continue
+    decode_one "$path"
+  done
+}
+
+# --- run ------------------------------------------------------------------
+if [[ "$WATCH_DECODE_ON_START" == "1" ]]; then
+  initial_pass "$WATCH_SAVES_SINCE_DAYS"
+else
+  echo "[info] Skipping initial decode pass (WATCH_DECODE_ON_START=0)."
 fi
 
-# ---------- banner & go ----------
-log "[dev] watching ${#WATCH_DIRS[@]} save dir(s) with backend: $BACKEND"
-for d in "${WATCH_DIRS[@]}"; do
-  log "[dev]   • $d"
-done
-
-case "$BACKEND" in
-  inotify) watch_inotify ;;
-  fswatch) watch_fswatch ;;
-  *)       log "[WARN] inotifywait/fswatch not found; using portable polling."; watch_poll ;;
-esac
+watch_loop
