@@ -50,7 +50,11 @@ curl -fsSL -o aa.nupkg "${URL}"
 
 echo "Extracting to .cache/aa/pkg"
 rm -rf pkg && mkdir -p pkg
-unzip -qq -o aa.nupkg -d pkg
+unzip -oq "$(ls -1 .cache/aa/*.nupkg | head -n1)" \
+  'contentFiles/any/any/Assets/data/*' \
+  'contentFiles/any/any/Assets/json/en-us/*' \
+  -d .cache/aa/pkg
+
 
 echo "Found JSON files under Assets/:"
 find pkg -type f -path "*/Assets/*" -name '*.json' -print | sed 's#^.*/Assets/#  Assets/#'

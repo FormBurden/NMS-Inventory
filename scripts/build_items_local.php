@@ -3,14 +3,11 @@
 declare(strict_types=1);
 
 /**
- * Build public/data/items_local.json from AssistantApps.NoMansSky.Info NuGet bundle.
+ * Build public/data/items_local.json by joining:
+ *  - Assets/data/developerDetails.json  (App Id -> GameId, Icon DDS, etc.)
+ *  - Assets/json/en-us/*.lang.json      (en-US item arrays: Id, Name, Icon, CdnUrl, …)
  *
- * Looks in: .cache/aa/pkg/contentFiles/any/any/Assets/{json,en,*,data}
- *
- * - Pulls English names from Assets/json/en/*.lang.json by keys like UI_<ID>_NAME
- * - Crawls Assets/data/*.json for objects with an ID-ish field (id/ID/enum/etc.)
- * - Infers "kind" from the source filename (Products → product, RawMaterials → substance, etc.)
- * - Merges everything into: { "<ID>": { id, name, kind, icon|null, src } }
+ * Output schema: { "<GameId>": { id, name, kind, icon, appId } }
  *
  * Usage:
  *   php scripts/build_items_local.php
@@ -21,218 +18,173 @@ $pkgRoot = $argv[1] ?? '.cache/aa/pkg';
 $outFile = $argv[2] ?? 'public/data/items_local.json';
 
 $assetsRoot = findAssetsRoot($pkgRoot);
-if (!$assetsRoot) {
-    fwrite(STDERR, "ERROR: Could not locate Assets under $pkgRoot\n");
-    exit(1);
-}
-fwrite(STDOUT, "Using Assets root: $assetsRoot\n");
-@mkdir(dirname($outFile), 0777, true);
+if (!$assetsRoot) fail("Could not locate Assets under $pkgRoot");
 
-$items = [];   // id => [id,name,kind,icon,src]
-$seen  = [];
-
-/* ---------------------------------------------------------------------------
- * 1) English names from language packs: Assets/json/en/*.lang.json
- *    Keys often look like UI_<ID>_NAME → "Starship Launch Fuel"
- * ------------------------------------------------------------------------- */
-$langDir = $assetsRoot . '/json/en';
-if (is_dir($langDir)) {
-    $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($langDir));
-    foreach ($iter as $f) {
-        if (!$f->isFile()) continue;
-        $fn = $f->getFilename();
-        if (!str_ends_with(strtolower($fn), '.json')) continue;
-
-        // classify kind by filename
-        $kindHint = kindFromLangFilename($fn);
-
-        $map = json_decode(file_get_contents($f->getPathname()), true);
-        if (!is_array($map)) continue;
-
-        foreach ($map as $k => $v) {
-            if (!is_string($k) || !is_string($v) || $v === '') continue;
-
-            // Match UI_<ID>_NAME (strict) or UI_<ID> (fallback)
-            if (preg_match('/^UI_([A-Z0-9^._-]+)_NAME$/', $k, $m) || preg_match('/^UI_([A-Z0-9^._-]+)$/', $k, $m)) {
-                $id = strtoupper($m[1]);
-                addOrMergeItem($items, $id, [
-                    'id'   => $id,
-                    'name' => $v,
-                    'kind' => $kindHint,
-                    'icon' => null,
-                    'src'  => $fn,
-                ]);
-                $seen[$id] = true;
-            }
-        }
-    }
-}
-
-/* ---------------------------------------------------------------------------
- * 2) Crawl data JSONs for embedded objects with ID-ish fields
- *    Path: Assets/data/*.json (Recharge.json, catalogue.json, etc.)
- * ------------------------------------------------------------------------- */
+$enDir   = findLangDir($assetsRoot);      // prefer json/en-us
 $dataDir = $assetsRoot . '/data';
-if (is_dir($dataDir)) {
-    $iter = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dataDir));
-    foreach ($iter as $f) {
-        if (!$f->isFile()) continue;
-        $fn = $f->getFilename();
-        if (!str_ends_with(strtolower($fn), '.json')) continue;
+if (!is_dir($dataDir)) fail("Missing Assets/data under $assetsRoot");
 
-        $payload = json_decode(file_get_contents($f->getPathname()), true);
-        if ($payload === null) continue;
+echo "Using Assets root: $assetsRoot\n";
+echo "Using en-us dir:   " . ($enDir ?: '<none>') . "\n";
 
-        // Recursively visit every associative array and try to extract an item
-        gatherItemsFromNode($payload, $fn, $items);
+/* 1) Build en-us item map: app Id -> {name, icon (cdn), kind} */
+$enMap = $enDir ? buildEnUsMap($enDir) : [];
+echo "en-us items indexed: " . count($enMap) . "\n";
+
+/* 2) Read developerDetails (App Id -> GameId, Icon DDS, …) */
+$devPath = $dataDir . '/developerDetails.json';
+if (!is_file($devPath)) fail("Missing $devPath");
+$devRows = json_decode(file_get_contents($devPath), true);
+if (!is_array($devRows)) fail("Invalid JSON: $devPath");
+
+$items = [];
+$withName = 0;
+foreach ($devRows as $row) {
+    $appId = $row['Id'] ?? null;
+    if (!is_string($appId) || $appId === '') continue;
+
+    // Pull the flat Properties dict
+    $props = [];
+    foreach ((array)($row['Properties'] ?? []) as $p) {
+        if (isset($p['Name'], $p['Value'])) $props[$p['Name']] = $p['Value'];
     }
-}
+    $gameId = strtoupper(trim((string)($props['GameId'] ?? '')));
+    if ($gameId === '') continue;
 
-/* ---------------------------------------------------------------------------
- * 3) Finalize & write
- * ------------------------------------------------------------------------- */
-ksort($items, SORT_STRING | SORT_FLAG_CASE);
-file_put_contents($outFile, json_encode($items, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-fwrite(STDOUT, "Wrote " . count($items) . " items to $outFile\n");
-exit(0);
+    // Prefer en-us name/icon/kind from enMap[appId]
+    $en = $enMap[$appId] ?? null;
+    $name = $en['name'] ?? null;
+    $kind = $en['kind'] ?? null;
+    $icon = $en['icon'] ?? null;
 
-/* ============================== helpers ================================== */
-
-function findAssetsRoot(string $root): ?string {
-    // Prefer NuGet layout: contentFiles/any/any/Assets
-    $preferred = rtrim($root, '/').'/contentFiles/any/any/Assets';
-    if (is_dir($preferred)) return realpath($preferred) ?: $preferred;
-
-    // Fallback: direct Assets under pkg root
-    $alt = rtrim($root, '/').'/Assets';
-    if (is_dir($alt)) return realpath($alt) ?: $alt;
-
-    // Last resort: search anywhere under $root
-    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
-    foreach ($it as $f) {
-        if ($f->isDir() && strtolower($f->getFilename()) === 'assets') {
-            return $f->getPathname();
+    // If no PNG icon in enMap, derive from DDS path (developerDetails.Icon)
+    if (!$icon && !empty($props['Icon']) && is_string($props['Icon'])) {
+        $base = pathinfo($props['Icon'], PATHINFO_FILENAME); // e.g. SUBSTANCE.FUEL.1
+        $icon = "https://nomanssky.fandom.com/wiki/Special:FilePath/{$base}.png";
+        if (!$kind) {
+            if (str_starts_with_ci($base, 'SUBSTANCE.'))   $kind = 'Substance';
+            elseif (str_starts_with_ci($base, 'PRODUCT.')) $kind = 'Product';
+            elseif (str_starts_with_ci($base, 'TECHNOLOGY.')) $kind = 'Technology';
         }
     }
+
+    // Final fallbacks
+    if (!$name) $name = $gameId;
+    if (!$kind) $kind = null;
+
+    $items[$gameId] = [
+        'id'    => $gameId,
+        'name'  => $name,
+        'kind'  => $kind,
+        'icon'  => $icon,       // may be null (UI will fall back to /api/icon.php)
+        'appId' => $appId,
+    ];
+    if ($name && $name !== $gameId) $withName++;
+}
+
+ksort($items, SORT_STRING | SORT_FLAG_CASE);
+@mkdir(dirname($outFile), 0777, true);
+file_put_contents($outFile, json_encode($items, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
+echo "Wrote " . count($items) . " items (with english names: $withName) to $outFile\n";
+
+/* ========================== helpers =========================== */
+
+function fail(string $msg): void { fwrite(STDERR, "ERROR: $msg\n"); exit(1); }
+
+function findAssetsRoot(string $pkgRoot): ?string {
+    // Prefer NuGet layout
+    $preferred = rtrim($pkgRoot, '/').'/contentFiles/any/any/Assets';
+    if (is_dir($preferred)) return realpath($preferred) ?: $preferred;
+    // Fallback: plain Assets
+    $alt = rtrim($pkgRoot, '/').'/Assets';
+    if (is_dir($alt)) return realpath($alt) ?: $alt;
     return null;
 }
 
-function addOrMergeItem(array &$items, string $id, array $new): void {
-    if (!isset($items[$id])) { $items[$id] = $new; return; }
-    $cur = $items[$id];
+function findLangDir(string $assetsRoot): ?string {
+    // Prefer json/en-us
+    $enUS = $assetsRoot . '/json/en-us';
+    if (is_dir($enUS)) return realpath($enUS) ?: $enUS;
+    // Accept json/en
+    $en = $assetsRoot . '/json/en';
+    if (is_dir($en)) return realpath($en) ?: $en;
+    // Accept a sibling "en-us" (if user manually supplied it)
+    $sibling = dirname($assetsRoot) . '/en-us';
+    if (is_dir($sibling)) return realpath($sibling) ?: $sibling;
+    return null;
+}
 
-    // Prefer nicer name (longer / contains spaces)
-    if ($new['name'] && ($cur['name'] === $id || strlen($new['name']) > strlen($cur['name']))) {
-        $cur['name'] = $new['name'];
+function buildEnUsMap(string $langDir): array {
+    $map = []; // appId => ['name'=>..., 'icon'=>..., 'kind'=>...]
+    $d = new RecursiveDirectoryIterator($langDir, FilesystemIterator::SKIP_DOTS);
+    $it = new RecursiveIteratorIterator($d);
+    foreach ($it as $f) {
+        if (!$f->isFile()) continue;
+        $fn = $f->getFilename();
+        if (!str_ends_with_ci($fn, '.json')) continue;
+        $kind = kindFromLangFilename($fn);
+
+        $arr = json_decode(file_get_contents($f->getPathname()), true);
+        if (!is_array($arr)) continue;
+
+        foreach ($arr as $row) {
+            if (!is_array($row)) continue;
+            $appId = $row['Id'] ?? null;
+            if (!is_string($appId) || $appId === '') continue;
+
+            $name = null;
+            foreach (['Name','Label','Title'] as $k) {
+                if (isset($row[$k]) && is_string($row[$k]) && $row[$k] !== '') { $name = $row[$k]; break; }
+            }
+            // Choose a PNG icon URL if present
+            $icon = null;
+            if (!empty($row['CdnUrl']) && is_string($row['CdnUrl'])) {
+                $icon = $row['CdnUrl'];
+            } elseif (!empty($row['Icon']) && is_string($row['Icon'])) {
+                // icons are relative like "rawMaterials/9.png"
+                $icon = "https://cdn.nmsassistant.com/" . ltrim($row['Icon'], '/');
+            }
+
+            // Merge (prefer richer name/icon; keep first non-null kind)
+            if (!isset($map[$appId])) $map[$appId] = ['name'=>null,'icon'=>null,'kind'=>null];
+            if ($name && ( $map[$appId]['name'] === null || wantsBetterName($map[$appId]['name'], $name) )) $map[$appId]['name'] = $name;
+            if ($icon) $map[$appId]['icon'] = $icon;
+            if ($kind && !$map[$appId]['kind']) $map[$appId]['kind'] = $kind;
+        }
     }
-    // Prefer known kind over null
-    if (!$cur['kind'] && $new['kind']) $cur['kind'] = $new['kind'];
-    // Prefer icon if provided
-    if (!$cur['icon'] && $new['icon']) $cur['icon'] = $new['icon'];
-
-    // Keep provenance of first source file (debug)
-    $items[$id] = $cur;
+    return $map;
 }
 
 function kindFromLangFilename(string $fn): ?string {
     $s = strtolower($fn);
     return match (true) {
-        str_contains($s, 'rawmaterials')     => 'substance',
-        str_contains($s, 'products')         => 'product',
-        str_contains($s, 'tradeitems')       => 'product',
-        str_contains($s, 'curiosity')        => 'product',
-        str_contains($s, 'others')           => 'product',
-        str_contains($s, 'technologymodule') => 'technology',
-        str_contains($s, 'technology')       => 'technology',
-        str_contains($s, 'proceduralproducts'),
-        str_contains($s, 'upgrademodules')   => 'procedural_technology',
-        default                              => null,
+        str_starts_with_ci($s, 'rawmaterials')      => 'Substance',
+        str_starts_with_ci($s, 'products')          => 'Product',
+        str_starts_with_ci($s, 'tradeitems')        => 'Product',
+        str_starts_with_ci($s, 'curiosity')         => 'Product',
+        str_starts_with_ci($s, 'others')            => 'Product',
+        str_starts_with_ci($s, 'cooking')           => 'Product',
+        str_starts_with_ci($s, 'technology')        => 'Technology',
+        str_starts_with_ci($s, 'constructedtechnology') => 'Technology',
+        str_starts_with_ci($s, 'upgrademodules')    => 'Technology',
+        str_starts_with_ci($s, 'technologymodule')  => 'Technology',
+        str_starts_with_ci($s, 'proceduralproducts')=> 'Product',
+        default                                      => null,
     };
 }
 
-function gatherItemsFromNode(mixed $node, string $srcFile, array &$items): void {
-    if (is_array($node)) {
-        // If this array looks like an item object, try to extract now
-        if (looksLikeItemRow($node)) {
-            $id = getIdFromRow($node);
-            if ($id) {
-                $name = getNameFromRow($node) ?? $id;
-                $kind = getKindFromRow($node) ?? kindFromDataFilename($srcFile);
-                $icon = getIconFromRow($node);
-
-                addOrMergeItem($items, $id, [
-                    'id'   => $id,
-                    'name' => $name,
-                    'kind' => $kind,
-                    'icon' => $icon,
-                    'src'  => $srcFile,
-                ]);
-                // do not return; keep scanning for nested items too
-            }
-        }
-        // Recurse
-        foreach ($node as $v) gatherItemsFromNode($v, $srcFile, $items);
-    }
-    // scalars: ignore
+function wantsBetterName(string $have, string $candidate): bool {
+    // Prefer names that aren’t just the GameId, longer/with spaces
+    if ($have === strtoupper($have)) return true;
+    return strlen($candidate) > strlen($have);
 }
 
-function looksLikeItemRow(array $row): bool {
-    // Needs an ID-ish field
-    $id = getIdFromRow($row);
-    if (!$id) return false;
-
-    // Avoid obvious non-items: controller mappings, etc., by checking ID shape
-    return (bool)preg_match('/^[A-Z0-9^._-]{3,}$/', $id);
+/* case-insensitive helpers */
+function str_starts_with_ci(string $haystack, string $needle): bool {
+    return strncasecmp($haystack, $needle, strlen($needle)) === 0;
 }
-
-function getIdFromRow(array $row): ?string {
-    foreach (['id','ID','Id','symbol','key','enum','value','valueEnum'] as $k) {
-        if (isset($row[$k]) && is_string($row[$k])) {
-            $v = strtoupper(trim($row[$k]));
-            if ($v !== '') return $v;
-        }
-    }
-    return null;
-}
-
-function getNameFromRow(array $row): ?string {
-    foreach (['name','Name','label','Label','title','Title','displayName','DisplayName'] as $k) {
-        if (isset($row[$k]) && is_string($row[$k]) && trim($row[$k])!=='') return $row[$k];
-    }
-    // nested { name: { English: "…" } }
-    foreach ($row as $v) {
-        if (is_array($v) && isset($v['English']) && is_string($v['English']) && $v['English']!=='') {
-            return $v['English'];
-        }
-    }
-    return null;
-}
-
-function getKindFromRow(array $row): ?string {
-    foreach (['type','Type','category','Category','group','Group','class','Class'] as $k) {
-        if (isset($row[$k]) && is_string($row[$k]) && trim($row[$k])!=='') {
-            return strtolower($row[$k]);
-        }
-    }
-    return null;
-}
-
-function getIconFromRow(array $row): ?string {
-    foreach (['icon','Icon','iconPath','iconFilename','IconFilename','texture','Texture','image','Image','wikiIcon','iconName'] as $k) {
-        if (isset($row[$k]) && is_string($row[$k]) && trim($row[$k])!=='') return $row[$k];
-    }
-    return null;
-}
-
-function kindFromDataFilename(string $fn): ?string {
-    $s = strtolower($fn);
-    return match (true) {
-        str_contains($s, 'product')      => 'product',
-        str_contains($s, 'rawmaterial')  => 'substance',
-        str_contains($s, 'substance')    => 'substance',
-        str_contains($s, 'technology')   => 'technology',
-        str_contains($s, 'procedural')   => 'procedural_technology',
-        str_contains($s, 'consumable')   => 'consumable',
-        default                          => null,
-    };
+function str_ends_with_ci(string $haystack, string $needle): bool {
+    $len = strlen($needle);
+    if ($len === 0) return true;
+    return strncasecmp(substr($haystack, -$len), $needle, $len) === 0;
 }
