@@ -1,9 +1,9 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>NMS Inventory</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
@@ -17,7 +17,6 @@
   <main>
     <div id="grid" class="grid"></div>
   </main>
-  <script>window.NMS_BASE="/";</script>
   <script src="/assets/js/inventory.js"></script>
 </body>
 </html>
