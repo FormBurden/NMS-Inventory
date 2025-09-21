@@ -84,6 +84,8 @@ def main():
 
     totals = defaultdict(int)
     slots_rows = []
+    container_owner = {}
+
 
     for path, parent, pkey, obj in walk(data):
         if path_has_bad_context(path):
@@ -137,7 +139,7 @@ def main():
             owner = "VEHICLE"
         else:
             # fallback: scan a much larger tail of the path for the legacy dotted patterns
-            pstr = ".".join(str(p) for p in path[-64:])
+            pstr = ".".join(str(p) for p in path[-256:])
             if ".;l5." in pstr:
                 owner = "SUIT"
             elif ".P;m." in pstr:
@@ -148,9 +150,18 @@ def main():
                 owner = "STORAGE"
             elif ".8ZP." in pstr:
                 owner = "VEHICLE"
+            
 
 
+        if owner == "FREIGHTER": owner = "FRIGATE"
         container = path_signature(path)
+        # Propagate known owner per container (stabilizes UNKNOWN bins)
+        prev = container_owner.get(container)
+        if owner == "UNKNOWN" and prev:
+            owner = prev
+        elif owner != "UNKNOWN":
+            container_owner[container] = owner
+
 
         totals[rid] += amt
 
