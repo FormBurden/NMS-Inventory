@@ -1,30 +1,54 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-command -v inotifywait >/dev/null 2>&1 || { echo "[err] inotifywait not found (install inotify-tools)"; exit 2; }
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env}"
-[[ -f "$ENV_FILE" ]] || { echo "[err] Missing .env at $ENV_FILE"; exit 2; }
 
-set -a; source "$ENV_FILE"; set +a
-: "${NMS_SAVE_ROOT:?}"; : "${NMS_PROFILE:?}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a; source "$ENV_FILE"; set +a
+else
+  echo "[watch] WARN: .env not found at $ENV_FILE – using environment/defaults."
+fi
 
-TARGET="$NMS_SAVE_ROOT/$NMS_PROFILE/save2.hg"
-DIR="$(dirname "$TARGET")"
+# Required (from .env or environment)
+: "${NMS_SAVE_ROOT:?Set NMS_SAVE_ROOT in .env}"
+: "${NMS_PROFILE:?Set NMS_PROFILE in .env}"
+
+# Optional
+WATCH_FILE="${NMS_WATCH_FILE:-save2.hg}"
+DEBOUNCE_SEC="${NMS_WATCH_DEBOUNCE:-3}"
+
+PROFILE_DIR="$NMS_SAVE_ROOT/$NMS_PROFILE"
+TARGET="$PROFILE_DIR/$WATCH_FILE"
+
+if ! command -v inotifywait >/dev/null 2>&1; then
+  echo "[watch] ERROR: inotifywait not found. Install 'inotify-tools' and re-run."
+  exit 1
+fi
+
+if [[ ! -d "$PROFILE_DIR" ]]; then
+  echo "[watch] ERROR: Profile dir not found: $PROFILE_DIR"
+  exit 1
+fi
 
 echo "[watch] watching: $TARGET"
 echo "[watch] press Ctrl-C to stop"
 
 last_run=0
-debounce_sec=3
 
 while true; do
-  inotifywait -e close_write,modify,move,create "$DIR" >/dev/null 2>&1 || true
+  # wake up on any activity under the profile dir
+  inotifywait -e close_write,modify,move,create "$PROFILE_DIR" >/dev/null 2>&1 || true
   [[ -f "$TARGET" ]] || continue
+
   now=$(date +%s)
-  (( now - last_run < debounce_sec )) && continue
+  (( now - last_run < DEBOUNCE_SEC )) && continue
+
   echo "[watch] change detected → import_latest.sh"
-  ( cd "$REPO_ROOT" && ./scripts/import_latest.sh ) && echo "[watch] import ok" || echo "[watch] import failed"
+  if ( cd "$REPO_ROOT" && ./scripts/import_latest.sh ); then
+    echo "[watch] import ok"
+  else
+    echo "[watch] import failed"
+  fi
   last_run=$now
 done

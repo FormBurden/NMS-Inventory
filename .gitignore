@@ -76,3 +76,6 @@ totals.csv
 
 output/*
 output*
+.nmsinventory-files.txt
+.nmsinventory.scope.txt
+bundles/
