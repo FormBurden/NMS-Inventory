@@ -1,0 +1,3 @@
+scripts/python/nms_extract_inventory.py
+.cache/decoded/save.json
+.cache/decoded/save2.json

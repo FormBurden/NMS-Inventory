@@ -1,0 +1,15 @@
+{
+  "navigation": [
+    {
+      "name": "http://localhost:8080/?tab=ship",
+      "initiatorType": "navigation",
+      "startTime": 0,
+      "duration": 137,
+      "transferSize": 1460,
+      "encodedBodySize": 1160,
+      "decodedBodySize": 1160,
+      "nextHopProtocol": "http/1.1"
+    }
+  ],
+  "resources": []
+}
