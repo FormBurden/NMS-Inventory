@@ -1,0 +1,34 @@
+DROP TABLE IF EXISTS nms_items;
+DROP TABLE IF EXISTS nms_snapshots;
+
+CREATE TABLE nms_snapshots (
+  snapshot_id     INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  source_path     VARCHAR(512) NOT NULL,
+  save_root       VARCHAR(128) NOT NULL,
+  source_mtime    DATETIME NULL,
+  decoded_mtime   DATETIME NULL,
+  json_sha256     CHAR(64) NOT NULL,
+  imported_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (snapshot_id),
+  UNIQUE KEY uniq_snapshot (save_root, source_mtime)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE nms_items (
+  item_id       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  snapshot_id   INT  UNSIGNED NOT NULL,
+  owner_type    ENUM('SUIT','SHIP','FREIGHTER','VEHICLE','STORAGE','PET','BASE','UNKNOWN') NOT NULL,
+  inventory     ENUM('GENERAL','TECHONLY','CARGO') NOT NULL,
+  container_id  VARCHAR(64) NOT NULL DEFAULT '',
+  slot_index    INT  UNSIGNED NOT NULL,
+  resource_id   VARCHAR(64) NOT NULL,
+  amount        INT  UNSIGNED NOT NULL,
+  item_type     ENUM('Product','Substance','Technology') NOT NULL,
+  PRIMARY KEY (item_id),
+  KEY idx_snapshot (snapshot_id),
+  KEY idx_resource (resource_id),
+  CONSTRAINT fk_items_snapshot
+    FOREIGN KEY (snapshot_id) REFERENCES nms_snapshots(snapshot_id)
+    ON DELETE CASCADE,
+  UNIQUE KEY uniq_slot_per_snapshot
+    (snapshot_id, owner_type, inventory, container_id, slot_index)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

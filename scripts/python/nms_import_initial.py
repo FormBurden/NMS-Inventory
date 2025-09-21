@@ -1,451 +1,440 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-db_import_initial.py
-Reads .cache/decoded/_manifest_recent.json and emits SQL to STDOUT:
-  - upsert nms_snapshots (captures snapshot_id in @sid)
-  - walk JSON and insert rows into nms_items
+nms_import_initial.py
 
-Now supports both human-readable decoder JSON and nmssavetool's obfuscated JSON:
-  - resource ids like "^ANTIMATTER" found even when keys are obfuscated
-  - amounts inferred from common obfuscated keys (e.g., 'F9q', '1o9') or max int fallback
-  - slot index built from embedded index dicts (e.g., {'>Qh':1,'XJ>':0} -> 'IDX1x0')
-  - filters exclude non-inventory '^UI_*' strings
-  - container_id gains a short path fingerprint prefix when owner_type cannot be inferred,
-    preventing duplicate-key collisions between distinct inventories that share the same 'IDX#x#'
+Initial import orchestrator with the following features preserved from your long version:
+  - Reads WATCH_SAVES_DIRS and NMSSAVETOOL from .env (modules.config.DATA_DIR respected)
+  - Age filter window (default 30 days), --since-days / --since-date / --no-age-filter
+  - Skips non-save files (mf_*, accountdata) unless --include-mf/--include-account
+  - Accepts explicit --initial (JSON/HG) and/or --saves-dirs (one or many)
+  - Robust nmssavetool invocation: stdout/stderr/file, “decompress”, -i/-o,
+    with BOM/NUL stripping and JSON-slice safety
+  - Writes manifest with metadata: generated_at, cutoff, recent_only, decoder_used
+  - Decodes into DATA_DIR/.cache/decoded by default; manifest named _manifest_recent.json
 
-Usage:
-  python3 scripts/python/db_import_initial.py | mariadb -u nms_user -p -D nms_database
+Additions/fixes:
+  - Delegates to scripts/python/db_import_initial.py to EMIT SQL to STDOUT
+  - All human-readable logs go to STDERR (safe to pipe to mariadb)
+  - New flag --no-sql to stop after decode/manifest (compat with your old flow)
+  - Pass-through --dry-run/--limit to the DB importer
 
-Options:
-  --manifest PATH   Path to manifest (default: DATA_DIR/.cache/decoded/_manifest_recent.json)
-  --limit N         Only import first N entries
-  --dry-run         Parse and report counts, emit no SQL
+Typical piping:
+  python3 scripts/python/nms_import_initial.py --decode \
+    --decoder "/path/to/nmssavetool.py" \
+    --saves-dirs "/path/with/spaces/st_XXXX" \
+  | mariadb -u nms_user -p -D nms_database
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shlex
+import subprocess
 import sys
-import hashlib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
 
-# DATA_DIR fallback
+# ---------- stderr logging ----------
+def log(msg: str) -> None:
+    sys.stderr.write(msg.rstrip() + "\n")
+
+# ---------- DATA_DIR (project convention) ----------
 try:
     from modules.config import DATA_DIR  # type: ignore
 except Exception:
     DATA_DIR = str(Path(__file__).resolve().parents[2])
 
-MANIFEST_DEFAULT = str(Path(DATA_DIR) / ".cache" / "decoded" / "_manifest_recent.json")
+DATA_DIR_PATH = Path(DATA_DIR)
+DECODED_DIR = DATA_DIR_PATH / ".cache" / "decoded"
+DEFAULT_MANIFEST_NAME = "_manifest_recent.json"
+DEFAULT_DAYS = 30
+DB_IMPORT = Path(__file__).with_name("db_import_initial.py")
 
-# -------------------------------
-# Tiny MySQL escapers
-# -------------------------------
-def sql_str(s: str) -> str:
-    return "'" + s.replace("\\", "\\\\").replace("'", "''") + "'"
+# ---------- dotenv helpers ----------
+def load_dotenv(repo_root: Path) -> dict:
+    env = {}
+    dotenv = repo_root / ".env"
+    if dotenv.exists():
+        for line in dotenv.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or "=" not in s:
+                continue
+            k, v = s.split("=", 1)
+            env[k.strip()] = v.strip().strip("'").strip('"')
+    return env
 
-def sql_dt(dt_iso: str) -> str:
-    try:
-        dt = dt_iso.replace("T", " ").split(".")[0]
-        datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
-        return sql_str(dt)
-    except Exception:
-        return sql_str(dt_iso)
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
-# -------------------------------
-# Robust JSON reader (strip BOM/NUL, slice to first { or [)
-# -------------------------------
-def read_json_lenient(path: Path) -> dict | list:
-    raw = path.read_bytes()
+def split_dirs(value: str) -> List[str]:
+    if not value:
+        return []
+    parts: List[str] = []
+    for token in value.replace(";", ",").replace(":", ",").split(","):
+        token = token.strip()
+        if token:
+            parts.append(token)
+    return parts
+
+# ---------- time + hashing ----------
+def iso_file_ts(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+def sha256_file(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+# ---------- age window ----------
+def cutoff_from_args(since_days: int | None, since_date: str | None) -> float:
+    if since_date:
+        dt = datetime.strptime(since_date, "%Y-%m-%d")
+        return dt.timestamp()
+    days = since_days if since_days is not None else DEFAULT_DAYS
+    return (datetime.now() - timedelta(days=days)).timestamp()
+
+def iter_recent_files(dirs: List[str], cutoff_ts: float, exts=(".hg",)) -> Tuple[List[Path], List[Path]]:
+    kept: List[Path] = []
+    skipped: List[Path] = []
+    for d in dirs:
+        base = Path(d).expanduser().resolve()
+        if not base.exists():
+            log(f"[WARN] ignoring missing directory: {base}")
+            continue
+        for p in base.rglob("*"):
+            if p.is_file() and p.suffix.lower() in exts:
+                try:
+                    mtime = p.stat().st_mtime
+                except FileNotFoundError:
+                    continue
+                (kept if mtime >= cutoff_ts else skipped).append(p)
+    kept.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    skipped.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return kept, skipped
+
+def should_decode(path: Path, include_mf: bool, include_account: bool) -> bool:
+    name = path.name.lower()
+    if name.startswith("mf_") and not include_mf:
+        return False
+    if "accountdata" in name and not include_account:
+        return False
+    return True
+
+# ---------- JSON cleaning ----------
+def _clean_json_bytes(raw: bytes) -> bytes:
     if raw.startswith(b"\xef\xbb\xbf"):
         raw = raw[3:]
     if b"\x00" in raw:
         raw = raw.replace(b"\x00", b"")
-    raw = raw.strip()
+    return raw.strip()
+
+def _slice_to_json(raw: bytes) -> bytes:
+    raw = _clean_json_bytes(raw)
     if not raw:
-        raise ValueError("empty JSON")
-    i_obj, i_arr = raw.find(b"{"), raw.find(b"[")
-    pos = min([x for x in (i_obj, i_arr) if x != -1]) if (i_obj != -1 or i_arr != -1) else -1
-    if pos > 0:
-        raw = raw[pos:]
-    txt = raw.decode("utf-8", errors="replace").strip()
-    if not txt or txt[0] not in "{[":
-        raise ValueError("not JSON")
-    return json.loads(txt)
+        return b""
+    i_obj = raw.find(b"{")
+    i_arr = raw.find(b"[")
+    positions = [x for x in (i_obj, i_arr) if x != -1]
+    if not positions:
+        return b""
+    start = min(positions)
+    cand = raw[start:].lstrip()
+    return cand if cand[:1] in (b"{", b"[") else b""
 
-# -------------------------------
-# Heuristics: pull Id / Amount / Type (readable + obfuscated)
-# -------------------------------
-ID_KEYS = ("Id", "ID", "Symbol", "ProductId", "SubstanceId", "ResourceId", "TypeId")
+# ---------- save-root inference ----------
+def infer_save_root(path: Path) -> str:
+    for part in path.resolve().parts[::-1]:
+        if part.startswith("st_"):
+            return part
+    return path.parent.name
 
-def get_id_from(obj: Dict[str, Any]) -> str | None:
-    # human-readable
-    for k in ID_KEYS:
-        v = obj.get(k)
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-    d = obj.get("Default")
-    if isinstance(d, dict):
-        for k in ID_KEYS:
-            v = d.get(k)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-    # obfuscated: any value like "^ANTIMATTER"
-    for v in obj.values():
-        if isinstance(v, str) and re.match(r"^\^[A-Z0-9_]+$", v):
-            return v
-    return None
-
-AMOUNT_PRIORITIES = ("Amount", "F9q", "1o9", "StackSize")
-
-def get_amount_from(obj: Dict[str, Any]) -> int | None:
-    # prefer common keys
-    for k in AMOUNT_PRIORITIES:
-        v = obj.get(k)
-        if isinstance(v, (int, float)):
-            return int(v)
-        if isinstance(v, str) and v.strip().isdigit():
-            return int(v.strip())
-        if isinstance(v, dict):
-            w = v.get("Value")
-            if isinstance(w, (int, float)):
-                return int(w)
-            if isinstance(w, str) and w.strip().isdigit():
-                return int(w.strip())
-    # fallback: max integer value in this dict
-    ints = [v for v in obj.values() if isinstance(v, int)]
-    if ints:
-        return max(ints)
-    return None
-
-def get_item_type(obj: Dict[str, Any], path_stack: List[str]) -> str:
-    # human-readable
-    t = obj.get("Type")
-    if isinstance(t, dict):
-        inv = t.get("InventoryType")
-        if isinstance(inv, str) and inv:
-            return inv
-    # obfuscated: look into any nested dict for 'Product'/'Substance'/'Technology'
-    for dv in obj.values():
-        if isinstance(dv, dict):
-            for sv in dv.values():
-                if isinstance(sv, str) and sv in ("Product","Substance","Technology"):
-                    return sv
-    # context fallback
-    p = " / ".join(path_stack).lower()
-    if "tech" in p or "technology" in p:
-        return "Technology"
-    if "substance" in p:
-        return "Substance"
-    return "Product"
-
-# -------------------------------
-# Owner / Inventory inference
-# -------------------------------
-OWNER_TOKENS = [
-    ("SUIT", ["Suit", "Player", "Exosuit", "PlayerStateData"]),
-    ("SHIP", ["Ship", "CurrentShip", "Spaceship", "ShipOwnership"]),
-    ("FREIGHTER", ["Freighter"]),
-    ("VEHICLE", ["Vehicle", "VehicleInventory"]),
-    ("STORAGE", ["Storage", "StorageContainer"]),
-    ("PET", ["Pet", "Creature"]),
-    ("BASE", ["Base"]),
-]
-
-def infer_owner_type(path_stack: List[str]) -> str:
-    p = " / ".join(path_stack)
-    for label, hints in OWNER_TOKENS:
-        for h in hints:
-            if h.lower() in p.lower():
-                return label
-    return "UNKNOWN"
-
-def infer_inventory_kind(path_stack: List[str]) -> str:
-    p = " / ".join(path_stack).lower()
-    if "tech" in p or "technology" in p:
-        return "TECHONLY"
-    if "cargo" in p:
-        return "CARGO"
-    return "GENERAL"
-
-def path_fingerprint(path_stack: List[str]) -> str:
+# ---------- nmssavetool runner ----------
+def run_nmssavetool(src: Path, out_json: Path, decoder_hint: str | None) -> None:
     """
-    Short, stable fingerprint for the *context* where the slot was found.
-    Helps disambiguate when owner_type is UNKNOWN and container_id like 'IDX1x2' repeats
-    across different inventories in obfuscated JSON.
+    Try stdout-first and file-output patterns, including 'decompress' and -i/-o variants.
+    Accept JSON from stdout or stderr; slice to first JSON token; strip BOM/NULs.
     """
-    # Take only the last ~8 nodes to avoid giant strings, then hash.
-    tail = "/".join(path_stack[-8:])
-    h = hashlib.sha1(tail.encode("utf-8", errors="ignore")).hexdigest()
-    # return a short base16 tag
-    return "C" + h[:6].upper()
-
-def infer_container_id(obj: Dict[str, Any], path_stack: List[str], owner_type: str) -> str:
-    # human-readable: explicit Index
-    idx = obj.get("Index")
-    if isinstance(idx, dict):
-        x = idx.get("X"); y = idx.get("Y"); z = idx.get("Z")
-        if isinstance(x, int) and isinstance(y, int):
-            base = f"IDX{int(x)}x{int(y)}" + (f"x{int(z)}" if isinstance(z, int) else "")
-        else:
-            base = ""
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    attempts: List[Tuple[List[str], str]] = []
+    if decoder_hint:
+        tool = str(Path(decoder_hint))
+        attempts += [
+            (["python3", tool, str(src)], "cap"),
+            (["python3", tool, "dump", str(src)], "cap"),
+            (["python3", tool, "decode", str(src)], "cap"),
+            (["python3", tool, "decompress", str(src), str(out_json)], "file"),
+            (["python3", tool, "-i", str(src), "-o", str(out_json)], "file"),
+        ]
     else:
-        base = ""
-    # obfuscated: any child dict with 2-3 ints -> treat as index tuple
-    if not base:
-        for dv in obj.values():
-            if isinstance(dv, dict):
-                ints = [v for v in dv.values() if isinstance(v, int)]
-                if 2 <= len(ints) <= 3:
-                    base = "IDX" + "x".join(str(int(x)) for x in ints[:3])
-                    break
-    # scan path segments for storage ids
-    if not base:
-        for seg in reversed(path_stack):
-            m = re.search(r"(Storage(?:Container)?)(\d+)", seg, flags=re.I)
-            if m:
-                base = f"{m.group(1).upper()}{m.group(2)}"
-                break
-    # trailing number
-    if not base:
-        for seg in reversed(path_stack):
-            m = re.search(r"(\d{1,3})$", seg)
-            if m:
-                base = m.group(1)
-                break
-    # If owner is UNKNOWN and base looks generic (IDX...), add a short path fingerprint
-    if owner_type == "UNKNOWN" and base.startswith("IDX"):
-        base = f"{path_fingerprint(path_stack)}-{base}"
-    return base
+        attempts += [
+            (["nmssavetool", str(src)], "cap"),
+            (["nmssavetool", "dump", str(src)], "cap"),
+            (["nmssavetool", "decode", str(src)], "cap"),
+            (["nmssavetool", "decompress", str(src), str(out_json)], "file"),
+            (["nmssavetool", "-i", str(src), "-o", str(out_json)], "file"),
+        ]
 
-# -------------------------------
-# Strict filter for nmssavetool slot dicts
-# -------------------------------
-def looks_like_nmst_slot(obj: Dict[str, Any]) -> bool:
-    """For obfuscated JSON, ensure it's a real inventory slot (not UI/quest)."""
-    # resource id like ^SOMETHING
-    rid = None
-    for v in obj.values():
-        if isinstance(v, str) and re.match(r"^\^[A-Z0-9_]+$", v):
-            rid = v
-            break
-    if not rid:
-        return False
-    # embedded index dict with 2-3 ints
-    has_index = False
-    for dv in obj.values():
-        if isinstance(dv, dict):
-            ints = [v for v in dv.values() if isinstance(v, int)]
-            if 2 <= len(ints) <= 3:
-                has_index = True; break
-    if not has_index:
-        return False
-    # embedded type dict with 'Product'/'Substance'/'Technology'
-    has_type = False
-    for dv in obj.values():
-        if isinstance(dv, dict):
-            if any(isinstance(sv, str) and sv in ("Product","Substance","Technology") for sv in dv.values()):
-                has_type = True; break
-    if not has_type:
-        return False
-    # slot dicts typically carry a couple of booleans too
-    if sum(1 for v in obj.values() if isinstance(v, bool)) < 2:
-        return False
-    return True
-
-# -------------------------------
-# Walk JSON looking for slot-like dicts
-# -------------------------------
-def walk_items(obj: Any, path_stack: List[str] | None = None) -> Iterable[Tuple[str,int,str,str,str,str]]:
-    """Yield: (resource_id, amount, owner_type, inventory_kind, container_id, item_type)."""
-    if path_stack is None:
-        path_stack = []
-
-    if isinstance(obj, dict):
-        rid = get_id_from(obj)
-        amt = get_amount_from(obj)
-        itype = get_item_type(obj, path_stack) if rid is not None else None
-
-        if rid is not None and amt is not None:
-            # is this readable (explicit Type/Index) or obfuscated?
-            has_explicit_type = isinstance(obj.get("Type"), dict) and isinstance(obj["Type"].get("InventoryType"), str)
-            idx_obj = obj.get("Index")
-            has_explicit_index = isinstance(idx_obj, dict) and isinstance(idx_obj.get("X"), int) and isinstance(idx_obj.get("Y"), int)
-            is_readable = has_explicit_type or has_explicit_index
-
-            if rid.startswith("^") and not is_readable and not looks_like_nmst_slot(obj):
-                pass  # skip non-slot '^' records (quests, UI strings, etc.)
-            elif rid.startswith("^UI_") and not looks_like_nmst_slot(obj):
-                pass
-            else:
-                owner = infer_owner_type(path_stack)
-                inv   = infer_inventory_kind(path_stack)
-                cont  = infer_container_id(obj, path_stack, owner)
-                yield (rid, int(amt), owner, inv, cont, itype or "Product")
-
-        for k, v in obj.items():
-            path_stack.append(str(k))
-            yield from walk_items(v, path_stack)
-            path_stack.pop()
-
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            path_stack.append(str(i))
-            yield from walk_items(v, path_stack)
-            path_stack.pop()
-
-def _tuple_to_int(nums: List[int]) -> int:
-    out = 0
-    for n in nums:
-        out = out * 1000 + int(n)
-    return out
-
-def compute_slot_index(cont: str, owner: str, inv: str, per_key_counter: Dict[Tuple[str,str,str], int]) -> int:
-    """
-    Build a stable, bounded integer index for the slot.
-    If container_id contains 'IDX', only use the digits AFTER the last 'IDX' token.
-    Otherwise, fall back to a per-(owner,inv,cont) counter starting at 0.
-    """
-    # Only look at the portion after the last 'IDX'
-    if "IDX" in cont:
-        idx_part = cont[cont.rfind("IDX"):]  # e.g., 'IDX1x2', 'IDX0x0'
-        nums = [int(x) for x in re.findall(r"\d+", idx_part)]
-        if nums:
-            return _tuple_to_int(nums)
-
-    # Fallback: counter per (owner, inv, cont)
-    ckey = (owner, inv, cont)
-    idx = per_key_counter.get(ckey, 0)
-    per_key_counter[ckey] = idx + 1
-    return idx
-
-
-# -------------------------------
-# Main
-# -------------------------------
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Emit SQL to import snapshots + items from decoder manifest.")
-    ap.add_argument("--manifest", default=MANIFEST_DEFAULT, help="Path to _manifest_recent.json")
-    ap.add_argument("--limit", type=int, default=0, help="Only import first N manifest entries (for testing)")
-    ap.add_argument("--dry-run", action="store_true", help="Parse, report counts, emit no INSERTs")
-    args = ap.parse_args()
-
-    manifest_path = Path(args.manifest).expanduser().resolve()
-    if not manifest_path.exists():
-        print(f"[ERR] manifest not found: {manifest_path}", file=sys.stderr)
-        sys.exit(2)
-
-    meta = json.loads(manifest_path.read_text(encoding="utf-8"))
-    items_meta = meta.get("items") or []
-    if not isinstance(items_meta, list) or not items_meta:
-        print("[ERR] manifest contains no 'items' array", file=sys.stderr)
-        sys.exit(2)
-
-    if args.limit and args.limit > 0:
-        items_meta = items_meta[:args.limit]
-
-    if not args.dry_run:
-        print("SET NAMES utf8mb4;")
-        print("SET time_zone = '+00:00';")
-        print("START TRANSACTION;")
-
-    total_slots = 0
-
-    for entry in items_meta:
-        src = entry.get("source_path")
-        root = entry.get("save_root", "")
-        src_mtime = entry.get("source_mtime", "")
-        dec_mtime = entry.get("decoded_mtime", "")
-        out_json = entry.get("out_json")
-        jhash = entry.get("json_sha256", "")
-
-        if not (src and out_json):
-            print(f"[warn] skipping manifest entry missing src/out_json: {entry}", file=sys.stderr)
-            continue
-
-        if not args.dry_run:
-            # Snapshot upsert + capture @sid
-            print("-- snapshot upsert")
-            print(
-                "INSERT INTO nms_snapshots "
-                "(source_path, save_root, source_mtime, decoded_mtime, json_sha256) VALUES ("
-                f"{sql_str(src)}, {sql_str(root)}, {sql_dt(src_mtime)}, {sql_dt(dec_mtime)}, {sql_str(jhash)}"
-                ") ON DUPLICATE KEY UPDATE "
-                "snapshot_id = LAST_INSERT_ID(snapshot_id), "
-                "decoded_mtime = VALUES(decoded_mtime), "
-                "json_sha256 = VALUES(json_sha256);"
-            )
-            print("SET @sid := LAST_INSERT_ID();")
-
-        # Parse JSON
-        jpath = Path(out_json)
+    errors: List[str] = []
+    for argv, mode in attempts:
         try:
-            data = read_json_lenient(jpath)
-        except Exception as e:
-            print(f"[warn] failed to parse JSON {out_json}: {e}", file=sys.stderr)
-            continue
-
-        # Deduplicate within a single snapshot by (owner, inv, cont, slot_index, rid)
-        # We also need a stable slot_index: if cont looks like IDX..., build from digits; else use a counter per (owner,inv,cont)
-        per_key_counter: Dict[Tuple[str,str,str], int] = {}
-        seen: Dict[Tuple[str,str,str,int,str], Tuple[int,str]] = {}
-
-        emitted = 0
-        for (rid, amt, owner, inv, cont, itype) in walk_items(data, []):
-            owner = (owner or "UNKNOWN").upper()
-            inv   = (inv or "GENERAL").upper()
-            cont  = cont or ""
-
-            # compute slot_index
-            slot_index = compute_slot_index(cont, owner, inv, per_key_counter)
-
-
-            skey = (owner, inv, cont, slot_index, rid)
-            prev = seen.get(skey)
-            if prev is None:
-                seen[skey] = (int(amt), itype or "Product")
+            res = subprocess.run(argv, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if mode == "cap":
+                for stream in (res.stdout, res.stderr):
+                    data = _slice_to_json(stream or b"")
+                    if data:
+                        out_json.write_bytes(data)
+                        return
+                errors.append(f"{' '.join(map(shlex.quote, argv))} -> no JSON on stdout/stderr after slicing")
             else:
-                # keep max amount if duplicates of exact same slot+rid arise
-                prev_amt, prev_type = prev
-                if int(amt) > prev_amt:
-                    seen[skey] = (int(amt), itype or prev_type)
+                # file mode
+                if out_json.exists():
+                    data = _slice_to_json(out_json.read_bytes())
+                    if data:
+                        out_json.write_bytes(data)
+                        return
+                    out_json.unlink(missing_ok=True)
+                    errors.append(f"{' '.join(map(shlex.quote, argv))} -> wrote file but not valid JSON")
+                else:
+                    # some builds still write JSON to a stream even with -o
+                    for stream in (res.stdout, res.stderr):
+                        data = _slice_to_json(stream or b"")
+                        if data:
+                            out_json.write_bytes(data)
+                            return
+                    errors.append(f"{' '.join(map(shlex.quote, argv))} -> no output file created")
+        except subprocess.CalledProcessError as e:
+            msg = (e.stderr or b"").decode("utf-8", errors="ignore").strip()
+            errors.append(f"{' '.join(map(shlex.quote, argv))}\n{msg}")
 
-        if args.dry_run:
-            total_slots += len(seen)
-            print(f"[dry-run] {out_json}: parsed {len(seen)} slots", file=sys.stderr)
-            continue
+    raise SystemExit(
+        "[ERR] Failed to decode JSON from save file.\n"
+        f"  src: {src}\n"
+        f"  out: {out_json}\n"
+        f"  decoder: {decoder_hint or 'nmssavetool (PATH)'}\n"
+        "  Tried:\n- " + "\n- ".join(errors) + "\n"
+        "Hint (manual test):\n"
+        f'  python3 "{decoder_hint or "nmssavetool"}" decompress "{src}" "{out_json}"\n'
+    )
 
-        # Emit rows with ON DUPLICATE KEY UPDATE to avoid mariadb aborting on duplicates
-        for (owner, inv, cont, slot_index, rid), (amt, itype) in seen.items():
-            rid_str = rid
-            print(
-                "INSERT INTO nms_items "
-                "(snapshot_id, owner_type, inventory, container_id, slot_index, resource_id, amount, item_type) VALUES ("
-                f"@sid, {sql_str(owner)}, {sql_str(inv)}, {sql_str(cont)}, {slot_index}, {sql_str(rid_str)}, {amt}, {sql_str(itype)}"
-                ") ON DUPLICATE KEY UPDATE "
-                "resource_id = VALUES(resource_id), "
-                "amount = GREATEST(nms_items.amount, VALUES(amount)), "
-                "item_type = VALUES(item_type);"
-            )
-            emitted += 1
+# ---------- CLI ----------
+def parse_args() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="Decode → manifest → (optionally) emit SQL for initial import.")
+    # inputs
+    ap.add_argument("--initial", help="Path to a single JSON/HG or directory; bypasses WATCH_SAVES_DIRS if set.")
+    ap.add_argument("--saves-dirs", nargs="+", help="One or more directories to scan recursively.")
+    # decode
+    ap.add_argument("--decode", action="store_true", help="Run nmssavetool on selected .hg files.")
+    ap.add_argument("--decoder", help="Path to nmssavetool or nmssavetool.py; overrides NMSSAVETOOL in .env.")
+    ap.add_argument("--include-mf", action="store_true", help="Also process mf_*.hg files.")
+    ap.add_argument("--include-account", action="store_true", help="Also process accountdata.hg files.")
+    # windows
+    ap.add_argument("--since-days", type=int, help=f"Only include files modified in the last N days (default {DEFAULT_DAYS}).")
+    ap.add_argument("--since-date", help="Only include files modified on/after YYYY-MM-DD.")
+    ap.add_argument("--no-age-filter", action="store_true", help="Disable the recent-only filter (process everything).")
+    # outputs
+    ap.add_argument("--out-decoded", default=str(DECODED_DIR), help="Directory for decoded JSON outputs.")
+    ap.add_argument("--manifest", help="Full path to manifest JSON (overrides --manifest-name).")
+    ap.add_argument("--manifest-name", default=DEFAULT_MANIFEST_NAME, help="Manifest filename within --out-decoded.")
+    # DB step
+    ap.add_argument("--no-sql", action="store_true", help="Stop after decode/manifest; do not emit SQL.")
+    ap.add_argument("--dry-run", action="store_true", help="Parse/report only; DB importer emits no INSERTs.")
+    ap.add_argument("--limit", type=int, default=0, help="Process only first N manifest entries.")
+    return ap.parse_args()
 
-    if not args.dry_run:
-        print("COMMIT;")
+# ---------- manifest ----------
+def write_manifest(items: List[Dict[str, Any]], manifest_path: Path, cutoff_ts: float | None, recent_only: bool, decoder_used: str) -> None:
+    doc = {
+        "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "cutoff": (None if cutoff_ts is None else iso_file_ts(cutoff_ts)),
+        "recent_only": recent_only,
+        "items": items,
+        "decoder_used": decoder_used,
+    }
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
 
+# ---------- main ----------
+def main() -> None:
+    args = parse_args()
+    root = repo_root()
+    env = load_dotenv(root)
+
+    decoder_hint = args.decoder or env.get("NMSSAVETOOL")
+    out_decoded = Path(args.out_decoded).expanduser().resolve()
+    out_decoded.mkdir(parents=True, exist_ok=True)
+
+    # Determine input universe (explicit > CLI > .env)
+    input_paths: List[str] = []
+    if args.initial:
+        input_paths = [args.initial]
+    elif args.saves_dirs:
+        input_paths = args.saves_dirs
+    else:
+        input_paths = split_dirs(env.get("WATCH_SAVES_DIRS", ""))
+
+    if not input_paths:
+        log("[ERR] No input provided. Use --initial / --saves-dirs or WATCH_SAVES_DIRS in .env")
+        sys.exit(2)
+
+    # Expand to JSON/HG lists
+    json_inputs: List[Path] = []
+    hg_dirs: List[str] = []
+    for p in input_paths:
+        P = Path(p).expanduser().resolve()
+        if P.is_file():
+            if P.suffix.lower() == ".json":
+                json_inputs.append(P)
+            elif P.suffix.lower() == ".hg":
+                hg_dirs.append(str(P.parent))
+            else:
+                log(f"[WARN] Unsupported file type (ignored): {P}")
+        elif P.is_dir():
+            hg_dirs.append(str(P))
+        else:
+            log(f"[WARN] Ignoring non-existent path: {P}")
+
+    # Age window
+    cutoff_ts = None if args.no_age_filter else cutoff_from_args(args.since_days, args.since_date)
+    if cutoff_ts is None:
+        log("[INFO] Age filter: DISABLED (all files)")
+    else:
+        log("[INFO] Age filter: Enabled")
+        log(f"[INFO] Cutoff: {iso_file_ts(cutoff_ts)}")
+
+    # Collect recent .hg
+    kept_hg: List[Path] = []
+    skipped_hg: List[Path] = []
+    if hg_dirs:
+        kept_all, skipped_all = iter_recent_files(hg_dirs, float("-inf") if cutoff_ts is None else cutoff_ts, exts=(".hg",))
+        # Drop non-save files unless flags say otherwise
+        filtered = [p for p in kept_all if should_decode(p, args.include_mf, args.include_account)]
+        dropped  = [p for p in kept_all if p not in filtered]
+        kept_hg, skipped_hg = filtered, skipped_all
+        if dropped:
+            names = ", ".join(sorted({p.name for p in dropped}))
+            log(f"[INFO] Skipping non-save files by default: {names}")
+
+        if kept_hg:
+            log(f"[OK] {len(kept_hg)} recent .hg files selected:")
+            for p in kept_hg:
+                log(f"    {p} (root {infer_save_root(p)}; mtime {iso_file_ts(p.stat().st_mtime)})")
+        else:
+            log("[OK] No recent .hg files found under provided dirs.")
+
+        if skipped_hg:
+            log(f"[INFO] {len(skipped_hg)} .hg files skipped as older than cutoff.")
+
+    # JSON inputs (explicit) bypass age filter by design
+    if json_inputs:
+        log(f"[OK] {len(json_inputs)} explicit JSON file(s) provided (age filter not applied to explicit JSON).")
+        for j in json_inputs:
+            log(f"    {j}")
+
+    # Early exit if dry-run (planning only)
+    if args.dry_run and not args.decode and not json_inputs and not kept_hg:
+        log("[DRY-RUN] Nothing to do (no decode targets / JSON).")
+        # still continue to importer if manifest exists/synthesizes
+
+    # (A) Decode .hg -> .json (optional)
+    items: List[Dict[str, Any]] = []
+    decoder_used = decoder_hint or "nmssavetool (PATH)"
+    if args.decode and kept_hg:
+        for src in kept_hg:
+            out_json = out_decoded / (src.stem + ".json")
+            log(f"[decode] {src} -> {out_json}")
+            run_nmssavetool(src, out_json, decoder_hint)
+            try:
+                jhash = sha256_file(out_json)
+                src_m = iso_file_ts(src.stat().st_mtime)
+                dec_m = iso_file_ts(out_json.stat().st_mtime)
+            except Exception:
+                jhash, src_m, dec_m = "", "", ""
+            items.append({
+                "source_path": str(src),
+                "save_root": infer_save_root(src),
+                "source_mtime": src_m,
+                "decoded_mtime": dec_m,
+                "out_json": str(out_json),
+                "json_sha256": jhash,
+                "decoder_used": decoder_used
+            })
+
+    # Include explicit JSONs into manifest if provided (no decode)
+    for j in json_inputs:
+        try:
+            jhash = sha256_file(j)
+            dec_m = iso_file_ts(j.stat().st_mtime)
+        except Exception:
+            jhash, dec_m = "", ""
+        items.append({
+            "source_path": str(j),
+            "save_root": infer_save_root(j),
+            "source_mtime": "",
+            "decoded_mtime": dec_m,
+            "out_json": str(j),
+            "json_sha256": jhash,
+            "decoder_used": decoder_used
+        })
+
+    # (B) Decide manifest path and write/synthesize
+    manifest_path = Path(args.manifest).expanduser().resolve() if args.manifest else (out_decoded / args.manifest_name)
+    if items:
+        write_manifest(items, manifest_path, (None if cutoff_ts is None else cutoff_ts), cutoff_ts is not None, decoder_used)
+        log(f"[OK] Manifest written: {manifest_path}")
+    else:
+        # No decode/new items; synthesize manifest from existing save*.json in out_decoded
+        if not manifest_path.exists():
+            cands = sorted(out_decoded.glob("save*.json"))
+            synth: List[Dict[str, Any]] = []
+            for j in cands:
+                try:
+                    jhash = sha256_file(j)
+                    synth.append({
+                        "source_path": str(j),
+                        "save_root": infer_save_root(j),
+                        "source_mtime": "",
+                        "decoded_mtime": iso_file_ts(j.stat().st_mtime),
+                        "out_json": str(j),
+                        "json_sha256": jhash,
+                        "decoder_used": decoder_used
+                    })
+                except Exception:
+                    continue
+            if synth:
+                write_manifest(synth, manifest_path, (None if cutoff_ts is None else cutoff_ts), cutoff_ts is not None, decoder_used)
+                log(f"[OK] Manifest synthesized from decoded JSONs: {manifest_path}")
+            else:
+                log(f"[ERR] Manifest not found and no decoded JSONs in {out_decoded}")
+                sys.exit(2)
+        else:
+            log(f"[OK] Using existing manifest: {manifest_path}")
+
+    # (C) Delegate to DB importer unless suppressed
+    if args.no_sql:
+        log("[INFO] --no-sql used: stopping after decode/manifest.")
+        return
+
+    cmd = ["python3", "-u", str(DB_IMPORT), "--manifest", str(manifest_path)]
     if args.dry_run:
-        print(f"[dry-run] total parsed slots: {total_slots}", file=sys.stderr)
+        cmd.append("--dry-run")
+    if args.limit and args.limit > 0:
+        cmd.extend(["--limit", str(args.limit)])
+
+    # Inherit our streams so nothing is PIPE-buffered; -u makes Python unbuffered.
+    proc = subprocess.Popen(cmd, stdout=sys.stdout, stderr=sys.stderr)
+    ret = proc.wait()
+    if ret != 0:
+        sys.exit(ret)
+
+
 
 if __name__ == "__main__":
-    try:
-        main()
-    except BrokenPipeError:
-        # Graceful exit when downstream closes the pipe (e.g., mysql error)
-        try:
-            sys.stdout.close()
-        except Exception:
-            pass
-        sys.exit(1)
+    main()
