@@ -92,8 +92,12 @@ if (!$connected) {
 }
 
 try {
-    $root = isset($_GET['root']) ? trim((string)$_GET['root']) : '';
+    // Inputs
+    $root        = isset($_GET['root']) ? trim((string)$_GET['root']) : '';
+    $scope       = isset($_GET['scope']) ? strtolower(trim((string)$_GET['scope'])) : '';
+    $includeTech = isset($_GET['include_tech']) && $_GET['include_tech'] === '1';
     $rows = [];
+
 
     if ($root !== '') {
         // simple guard; allow alnum + underscore
@@ -108,12 +112,59 @@ try {
         $stmt->bind_param('s', $root);
         if (!$stmt->execute()) throw new RuntimeException('execute failed: ' . $stmt->error);
         $res = $stmt->get_result();
+    } elseif ($scope !== '') {
+        // map ui scope -> owner_type prefixes (case-insensitive)
+        $scopeOwners = [
+            'character' => ['CHAR','CHARACTER','EXOSUIT','SUIT'],
+            'base'      => ['BASE'],
+            'storage'   => ['STORAGE','CONTAINER'],
+            'frigate'   => ['FRIGATE'],
+            'corvette'  => ['FREIGHTER','CORVETTE','CAPITAL','CAPSHIP'],
+            'ship'      => ['SHIP','STARSHIP'],
+            'vehicles'  => ['VEHICLE','EXOCRAFT','EXO_CRAFT','VEHICLES'],
+        ];
+        $owners = $scopeOwners[$scope] ?? [];
+        if (!$owners) {
+            throw new RuntimeException('Unsupported scope.');
+        }
+
+        // latest active snapshot
+        $rs = $mysqli->query("SELECT snapshot_id FROM nms_snapshots ORDER BY imported_at DESC LIMIT 1");
+        if (!$rs) throw new RuntimeException('query failed: ' . $mysqli->error);
+        $snap = $rs->fetch_assoc();
+        if (!$snap) throw new RuntimeException('No snapshots found.');
+        $snapshotId = (int) $snap['snapshot_id'];
+        $rs->free();
+
+        // owner_type LIKE conditions + optional TECHONLY filter
+        $like  = [];
+        $types = 'i';
+        $bind  = [$snapshotId];
+        foreach ($owners as $o) {
+            $like[] = "UPPER(owner_type) LIKE ?";
+            $bind[] = strtoupper($o) . '%';
+            $types .= 's';
+        }
+        $techSql = $includeTech ? "" : " AND UPPER(inventory) <> 'TECHONLY'";
+
+        $sql = "SELECT resource_id, SUM(amount) AS amount, MIN(item_type) AS item_type
+                FROM nms_items
+                WHERE snapshot_id = ?{$techSql}
+                  AND (" . implode(' OR ', $like) . ")
+                GROUP BY resource_id";
+        $stmt = $mysqli->prepare($sql);
+        if (!$stmt) throw new RuntimeException('prepare failed: ' . $mysqli->error);
+        $stmt->bind_param($types, ...$bind);
+        if (!$stmt->execute()) throw new RuntimeException('execute failed: ' . $stmt->error);
+        $res = $stmt->get_result();
     } else {
         $sql = "SELECT resource_id, amount, item_type
                 FROM v_api_inventory_rows_active_combined";
         $res = $mysqli->query($sql);
         if (!$res) throw new RuntimeException('query failed: ' . $mysqli->error);
     }
+
+
 
     while ($r = $res->fetch_assoc()) {
         $rid = $r['resource_id'];

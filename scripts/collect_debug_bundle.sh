@@ -59,7 +59,7 @@ Options:
   --decode-logs    Include decoder/import logs from .cache/** and decoded debug blobs.
   --no-network     Skip browser/probes capture.
   --probes-stdin   Read curl probes from stdin (here-doc after the command).
-  --capture-sec N  Wait N seconds before capturing logs/network (default 15).
+    --capture-sec N  If FF attach runs: capture for N seconds; else: wait N seconds before logs/network (default 15).
   -h, --help       This help.
 
 
@@ -695,11 +695,20 @@ fi
 db_snapshot "$TMP_WORK/db" || true
 
 # -------- Capture window (EDTB-style) --------
-# Wait before collecting logs/network, so the server can flush activity.
-if [[ "${CAPTURE_SEC:-0}" -gt 0 ]] && { [[ "${DO_NETWORK:-1}" -eq 1 ]] || [[ "${DO_LOGS:-1}" -eq 1 ]]; }; then
-  echo "[*] Capture window: ${CAPTURE_SEC}s"
-  sleep "${CAPTURE_SEC}"
+# Avoid double-waiting: if Firefox attach will run, we skip the pre-sleep and let it capture for CAPTURE_SEC.
+if { [[ "${CAPTURE_SEC:-0}" -gt 0 ]] && { [[ "${DO_NETWORK:-1}" -eq 1 ]] || [[ "${DO_LOGS:-1}" -eq 1 ]]; }; }; then
+  WILL_FF_ATTACH=0
+  if [[ "${DO_NETWORK:-1}" -eq 1 ]] && [[ -f "scripts/capture_ff_attach.py" ]]; then
+    WILL_FF_ATTACH=1
+  fi
+  if [[ "$WILL_FF_ATTACH" -eq 1 ]]; then
+    echo "[*] Using Firefox attach for ${CAPTURE_SEC}s (no pre-sleep)"
+  else
+    echo "[*] Pre-capture wait: ${CAPTURE_SEC}s"
+    sleep "${CAPTURE_SEC}"
+  fi
 fi
+
 
 
 # -------- Logs (DEV window + optional decode/import) --------

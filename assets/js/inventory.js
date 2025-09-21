@@ -7,21 +7,23 @@
     grid: document.getElementById("grid"),
     search: document.getElementById("search"),
     includeTech: document.getElementById("includeTech"),
+    tabs: document.getElementById("tabs"),
   };
 
   // ---------- Config ----------
   const BASE = (window.NMS_BASE || "/").replace(/\/+$/, "");
   const ENDPOINTS = {
-    items: `${BASE}/data/items_local.json`,
+    catalogue: `${BASE}/api/catalogue.php`,
     inventory: `${BASE}/api/inventory.php`,
-    icon: `${BASE}/api/icon.php`,
-    placeholder: `${BASE}/assets/img/placeholder.png`,
+    settings: `${BASE}/api/settings.php`
   };
+
 
   // ---------- State ----------
   const state = {
     catalogue: {},  // { GAMEID: { name, kind, icon, appId } }
     rows: [],       // API rows enriched with display_name, icon_url, etc.
+    scope: "character",
   };
 
   // ---------- Utils ----------
@@ -105,7 +107,11 @@
         return a.includes(q) || b.includes(q) || c.includes(q);
       });
     }
-
+    // Hide negative totals if user disabled them in Settings
+    if (!settings.showNegatives) {
+      rows = rows.filter((r) => Number(r.amount || 0) >= 0);
+    }
+    
     // Optional: alpha sort by display name for readability
     rows = rows.slice().sort((x, y) =>
       String(x.display_name || x.resource_id).localeCompare(String(y.display_name || y.resource_id))
@@ -113,7 +119,17 @@
 
     for (const r of rows) els.grid.appendChild(cardRow(r));
   }
-
+  // ---------- Scope / Tabs ----------
+  function setScope(scope) {
+    state.scope = String(scope || "character").toLowerCase();
+    if (els.tabs) {
+      const btns = els.tabs.querySelectorAll('button[data-scope]');
+      btns.forEach(b => b.classList.toggle('active', b.dataset.scope === state.scope));
+    }
+    // Fetch inventory for the selected scope
+    loadInventory();
+  }
+  
   // ---------- Data loaders ----------
   async function loadCatalogue() {
     try {
@@ -129,7 +145,7 @@
   async function loadInventory() {
     const params = new URLSearchParams();
     if (els.includeTech && els.includeTech.checked) params.set("include_tech", "1");
-
+    if (state.scope) params.set("scope", state.scope);
     const url = `${ENDPOINTS.inventory}${params.toString() ? `?${params}` : ""}`;
     const res = await fetch(url, { cache: "no-store" });
     const payload = await res.json();
@@ -156,14 +172,98 @@
     render();
   }
 
+  // ---------- Settings ----------
+  const DEFAULT_SETTINGS = {
+    language: "en-us",
+    defaultWindow: "Character",
+    iconSize: "medium",          // small | medium | large
+    showNegatives: true,         // show negative rows in Inventory
+    autoRefreshSec: 15,          // 0 (off), 5, 15, 60, ...
+    theme: "system",             // light | dark | system
+  };
+  let settings = { ...DEFAULT_SETTINGS };
+  let refreshTimer = null;
+
+  function applySettings() {
+    // icon size class on <body>
+    document.body.classList.remove("icon-sm", "icon-md", "icon-lg");
+    const sizeClass = settings.iconSize === "small" ? "icon-sm"
+      : settings.iconSize === "large" ? "icon-lg"
+        : "icon-md";
+    document.body.classList.add(sizeClass);
+
+    // theme class on <body>
+    document.body.classList.remove("theme-light");
+    if (settings.theme === "light") {
+      document.body.classList.add("theme-light");
+    } else if (settings.theme === "dark") {
+      // current CSS defaults are dark; no extra class needed
+    } else {
+      // system: do nothing; keep default
+    }
+  }
+
+  async function loadSettings() {
+    // 1) Start from localStorage cache
+    try {
+      const raw = localStorage.getItem("nms_settings");
+      if (raw) settings = { ...settings, ...JSON.parse(raw) };
+    } catch { }
+
+    // 2) Prefer server copy if available
+    if (ENDPOINTS.settings) {
+      try {
+        const res = await fetch(ENDPOINTS.settings, { cache: "no-store" });
+        if (res.ok) {
+          const payload = await res.json();
+          const sv = payload?.settings || payload || {};
+          settings = { ...settings, ...sv };
+          localStorage.setItem("nms_settings", JSON.stringify(settings));
+        }
+      } catch { }
+    }
+  }
+
+  function scheduleAutoRefresh() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    const n = parseInt(settings.autoRefreshSec, 10) || 0;
+    if (n > 0) refreshTimer = setInterval(() => loadInventory(), n * 1000);
+  }
+  
+
   // ---------- Init ----------
   async function boot() {
-    // hook events first so quick typing is responsive after first paint
+    // Hook UI events first
     if (els.search) els.search.addEventListener("input", render);
     if (els.includeTech) els.includeTech.addEventListener("change", loadInventory);
 
-    await loadCatalogue();   // names/kinds/icons
-    await loadInventory();   // data from DB → then render
+    // Load settings first, apply visual prefs (icon size/theme)
+    if (typeof loadSettings === "function") {
+      try { await loadSettings(); } catch { }
+    }
+    if (typeof applySettings === "function") {
+      try { applySettings(); } catch { }
+    }
+
+    // Data bootstrap
+    await loadCatalogue();
+    await loadInventory();
+
+    // Optional auto-refresh
+    if (typeof scheduleAutoRefresh === "function") {
+      try { scheduleAutoRefresh(); } catch { }
+    }
+  }
+
+
+  if (els.tabs) {
+    els.tabs.addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-scope]");
+      if (b) setScope(b.dataset.scope);
+    });
+    // initialize from the active button (or first)
+    const current = els.tabs.querySelector("button.active[data-scope]") || els.tabs.querySelector("button[data-scope]");
+    if (current) state.scope = current.dataset.scope;
   }
 
   if (document.readyState === "loading") {

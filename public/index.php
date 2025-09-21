@@ -12,9 +12,20 @@
     <div class="actions">
       <label><input type="checkbox" id="includeTech"> Include Tech</label>
       <input type="text" id="search" placeholder="Search…">
+      <a class="btn" href="/Settings/">Settings</a>
     </div>
   </header>
   <main>
+  <nav class="tabs" id="tabs">
+      <button class="tab active" data-scope="character">Character</button>
+      <button class="tab" data-scope="base">Base</button>
+      <button class="tab" data-scope="storage">Storage</button>
+      <button class="tab" data-scope="frigate">Frigate</button>
+      <button class="tab" data-scope="corvette">Corvette</button>
+      <button class="tab" data-scope="ship">Ship</button>
+      <button class="tab" data-scope="vehicles">Vehicles</button>
+    </nav>
+
     <div id="grid" class="grid"></div>
   </main>
   <script src="/assets/js/inventory.js"></script>

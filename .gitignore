@@ -79,3 +79,4 @@ output*
 .nmsinventory-files.txt
 .nmsinventory.scope.txt
 bundles/
+.venv-capture

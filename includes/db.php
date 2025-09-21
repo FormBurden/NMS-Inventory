@@ -10,11 +10,11 @@ function db(): PDO {
     static $pdo = null;
     if ($pdo instanceof PDO) return $pdo;
 
-    $host = env('DB_HOST', '127.0.0.1');
+    $host = env('NMS_DB_HOST', '127.0.0.1');
     $port = (string)env('DB_PORT', '3306');
-    $name = env('DB_NAME', 'nms_database');
-    $user = env('DB_USER', '');
-    $pass = env('DB_PASS', '');
+    $name = env('NMS_DB_NAME', 'nms_database');
+    $user = env('NMS_DB_USER', 'nms_user');
+    $pass = env('NMS_DB_PASS', '');
 
     $dsn = "mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4";
     $pdo = new PDO($dsn, $user, $pass, [
