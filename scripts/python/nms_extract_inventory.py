@@ -172,6 +172,46 @@ def main():
                 if isinstance(seg, int):
                     slot_index = seg
                     break
+            # --- begin: heuristic owner/inventory inference (NMS-Inventory) ---
+            # Derive owner by path keywords if still unknown.
+            p_low = pstr.lower()
+
+            def _has(*keys):
+                return any(k in p_low for k in keys)
+
+            # Owner inference
+            if owner == "UNKNOWN":
+                if _has("suit", "playerinventory", "playerstate", "inventory.suit"):
+                    owner = "SUIT"
+                elif _has("ship", "currentship", "shipinventory", "inventory.ship"):
+                    owner = "SHIP"
+                elif _has("freighter", "frigate", "capitalship", "inventory.freighter"):
+                    owner = "FRIGATE"
+                elif _has("vehicle", "exocraft", "buggy", "roamer", "nomad", "colossus", "minotaur", "nautilon"):
+                    owner = "VEHICLE"
+                elif _has("storage", "chest", "base", "homebase", "storagecontainer"):
+                    owner = "STORAGE"
+
+            # Inventory type inference
+            # Prefer explicit slot hint when available
+            inv_hint = (slot.get("InventoryType") or "").upper() if isinstance(slot, dict) else ""
+            if not inv_hint:
+                if _has("tech"):
+                    inv_hint = "TECHONLY"
+                elif _has("cargo"):
+                    inv_hint = "CARGO"
+
+            if inv_hint in ("TECH", "TECHNOLOGY"):
+                inv_hint = "TECHONLY"
+
+            if inv_hint in ("TECHONLY", "CARGO", "GENERAL"):
+                if inventory == "GENERAL" and inv_hint != "GENERAL":
+                    inventory = inv_hint
+            # Normalize freighter wording
+            if owner == "FREIGHTER":
+                owner = "FRIGATE"
+            # --- end: heuristic owner/inventory inference (NMS-Inventory) ---
+
             slots_rows.append({
                 "owner_type": owner,
                 "inventory": inv,
