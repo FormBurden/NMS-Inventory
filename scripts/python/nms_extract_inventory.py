@@ -121,18 +121,34 @@ def main():
                 inv = "CARGO"
 
         # owner inference: keep it simple & conservative — we can refine later
+                # owner inference: widen the search window and check segment membership
         owner = "UNKNOWN"
-        pstr = ".".join(str(p) for p in path[-12:])
-        if ".;l5." in pstr:
+        # consider ALL string segments for exact membership checks
+        segs = {str(p) for p in path if isinstance(p, str)}
+        if ";l5" in segs:
             owner = "SUIT"
-        elif ".P;m." in pstr:
+        elif "P;m" in segs:
             owner = "SHIP"
-        elif ".<IP." in pstr:
+        elif "<IP" in segs:
             owner = "FREIGHTER"
-        elif ".3Nc." in pstr:
+        elif "3Nc" in segs:
             owner = "STORAGE"
-        elif ".8ZP." in pstr:
+        elif "8ZP" in segs:
             owner = "VEHICLE"
+        else:
+            # fallback: scan a much larger tail of the path for the legacy dotted patterns
+            pstr = ".".join(str(p) for p in path[-64:])
+            if ".;l5." in pstr:
+                owner = "SUIT"
+            elif ".P;m." in pstr:
+                owner = "SHIP"
+            elif ".<IP." in pstr:
+                owner = "FREIGHTER"
+            elif ".3Nc." in pstr:
+                owner = "STORAGE"
+            elif ".8ZP." in pstr:
+                owner = "VEHICLE"
+
 
         container = path_signature(path)
 

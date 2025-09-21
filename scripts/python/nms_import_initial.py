@@ -167,12 +167,18 @@ def run_nmssavetool(src: Path, out_json: Path, decoder_hint: str | None) -> None
     if decoder_hint:
         tool = str(Path(decoder_hint))
         attempts += [
+            # Your decoder (preferred): --in/--out writes directly to file
+            (["python3", tool, "--in", str(src), "--out", str(out_json)], "file"),
+            # Allow short aliases too (now supported by nms_hg_decoder.py)
+            (["python3", tool, "-i", str(src), "-o", str(out_json)], "file"),
+
+            # Fallbacks for nmssavetool-style CLIs (if a user points to that instead)
             (["python3", tool, str(src)], "cap"),
             (["python3", tool, "dump", str(src)], "cap"),
             (["python3", tool, "decode", str(src)], "cap"),
             (["python3", tool, "decompress", str(src), str(out_json)], "file"),
-            (["python3", tool, "-i", str(src), "-o", str(out_json)], "file"),
         ]
+
     else:
         attempts += [
             (["nmssavetool", str(src)], "cap"),

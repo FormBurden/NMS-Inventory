@@ -25,9 +25,9 @@ function json_out($data, int $code = 200): void {
 }
 
 try {
-  $pdo = db(); // your includes/db.php should expose this
+  $pdo = db(); // your includes/db.php should expose this (PDO with ERRMODE_EXCEPTION)
 
-  // Create table if missing (NO CHECK constraints → maximum MariaDB compatibility)
+  // Create table if missing (no CHECK constraints for max MariaDB compatibility)
   $pdo->exec("
     CREATE TABLE IF NOT EXISTS `".TABLE."` (
       `id` TINYINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -36,10 +36,8 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   ");
 
-  // Ensure row id=1 exists (empty JSON by default)
-  $pdo->exec("
-    INSERT IGNORE INTO `".TABLE."` (`id`,`settings_json`) VALUES (1, '{}')
-  ");
+  // Ensure row id=1 exists
+  $pdo->exec("INSERT IGNORE INTO `".TABLE."` (`id`,`settings_json`) VALUES (1, '{}')");
 
   $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -50,7 +48,6 @@ try {
       $dec = json_decode($row['settings_json'], true);
       if (is_array($dec)) $stored = $dec;
     }
-    // Merge on read so missing keys always have defaults
     $merged = array_replace(DEFAULTS, $stored);
     json_out(['ok' => true, 'settings' => $merged]);
   }
@@ -60,14 +57,10 @@ try {
     $in  = json_decode($raw, true);
     if (!is_array($in)) json_out(['ok'=>false,'error'=>'Invalid JSON body'], 400);
 
-    // Whitelist incoming keys
     $allowed = array_keys(DEFAULTS);
     $clean = [];
-    foreach ($allowed as $k) {
-      if (array_key_exists($k, $in)) $clean[$k] = $in[$k];
-    }
+    foreach ($allowed as $k) if (array_key_exists($k, $in)) $clean[$k] = $in[$k];
 
-    // Merge with existing to keep any future keys
     $row = $pdo->query("SELECT settings_json FROM `".TABLE."` WHERE id=1")->fetch(PDO::FETCH_ASSOC);
     $current = [];
     if ($row && !empty($row['settings_json'])) {
@@ -89,7 +82,6 @@ try {
 
   json_out(['ok'=>false,'error'=>'Method not allowed'], 405);
 } catch (Throwable $e) {
-  // Emit a precise error for server log + return safe JSON
-  error_log("[settings.php] ".$e->getMessage());
-  json_out(['ok'=>false,'error'=>'Internal error: '.$e->getMessage()], 500);
+  error_log('[settings.php] '.$e->getMessage());
+  json_out(['ok'=>false,'error'=>'Internal error'], 500);
 }

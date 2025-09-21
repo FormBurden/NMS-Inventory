@@ -7,6 +7,8 @@
 
 set -Eeuo pipefail
 shopt -s dotglob nullglob extglob
+shopt -s globstar
+
 
 # -------- Defaults / Env --------
 NMS_URL_PREFIX="${NMS_URL_PREFIX:-http://localhost:8080}"
@@ -33,6 +35,7 @@ BUNDLE_SHA=""
 LEDGER_FILE=".nmsinventory.scope.txt"
 BUNDLES_ROOT="${BUNDLES_ROOT:-bundles}"
 BUNDLE_DIR=""
+PROBES_RAN=0
 
 
 
@@ -59,7 +62,7 @@ Options:
   --decode-logs    Include decoder/import logs from .cache/** and decoded debug blobs.
   --no-network     Skip browser/probes capture.
   --probes-stdin   Read curl probes from stdin (here-doc after the command).
-    --capture-sec N  If FF attach runs: capture for N seconds; else: wait N seconds before logs/network (default 15).
+  --capture-sec N  If FF attach runs: capture for N seconds; else: wait N seconds before logs/network (default 15).
   -h, --help       This help.
 
 
@@ -756,7 +759,7 @@ if [[ "${DO_NETWORK:-1}" -eq 1 ]]; then
 
   # Probes (if provided)
   if [[ "${USE_PROBES_STDIN:-0}" -eq 1 ]]; then
-    run_probes_stdin "$TMP_WORK"
+    [[ "${PROBES_RAN:-0}" -eq 0 ]] && run_probes_stdin "$TMP_WORK" && PROBES_RAN=1
   fi
 fi
 

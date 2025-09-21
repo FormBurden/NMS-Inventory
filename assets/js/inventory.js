@@ -15,8 +15,11 @@
   const ENDPOINTS = {
     catalogue: `${BASE}/api/catalogue.php`,
     inventory: `${BASE}/api/inventory.php`,
-    settings: `${BASE}/api/settings.php`
+    settings: "/api/settings.php",
+    items: `${BASE}/data/items_local.json`,
+    icon: `${BASE}/api/icon.php`
   };
+
 
 
   // ---------- State ----------
@@ -69,7 +72,7 @@
     img.addEventListener("error", () => {
       if (!img.dataset.fallback1) {
         img.dataset.fallback1 = "1";
-        img.src = `${ENDPOINTS.icon}?id=${encodeURIComponent(r.resource_id)}`;
+        img.src = (catalogue[rid]?.icon) || row.icon_url || `${ENDPOINTS.icon}?id=${encodeURIComponent(rid)}&type=${encodeURIComponent(String(row.type || ""))}`;
       } else if (!img.dataset.fallback2) {
         img.dataset.fallback2 = "1";
         img.src = ENDPOINTS.placeholder;
@@ -126,14 +129,26 @@
       const btns = els.tabs.querySelectorAll('button[data-scope]');
       btns.forEach(b => b.classList.toggle('active', b.dataset.scope === state.scope));
     }
+    // Reflect scope in URL (?tab=...) without reload
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('tab', state.scope);
+      history.replaceState(null, '', url);
+    } catch { }
     // Fetch inventory for the selected scope
     loadInventory();
   }
+
   
   // ---------- Data loaders ----------
   async function loadCatalogue() {
     try {
-      const res = await fetch(ENDPOINTS.items, { cache: "no-store" });
+      const qs = new URLSearchParams();
+      if (state?.scope) qs.set("scope", String(state.scope).toLowerCase());
+      if (els?.includeTech && els.includeTech.checked) qs.set("include_tech", "1");
+      const url = `${ENDPOINTS.inventory}${qs.toString() ? "?" + qs.toString() : ""}`;
+      const res = await fetch(url, { cache: "no-store" });
+
       if (!res.ok) throw new Error(`Failed to load ${ENDPOINTS.items}`);
       state.catalogue = await res.json();
     } catch (e) {
@@ -238,22 +253,27 @@
     if (els.includeTech) els.includeTech.addEventListener("change", loadInventory);
 
     // Load settings first, apply visual prefs (icon size/theme)
-    if (typeof loadSettings === "function") {
-      try { await loadSettings(); } catch { }
-    }
-    if (typeof applySettings === "function") {
-      try { applySettings(); } catch { }
-    }
+    try { await loadSettings(); } catch { }
+    try { applySettings(); } catch { }
+
+    // Choose initial scope: URL ?tab= overrides Settings.defaultWindow
+    let initialScope = "character";
+    try {
+      const qp = new URLSearchParams(location.search);
+      const tab = qp.get("tab");
+      initialScope = (tab || settings.defaultWindow || "character").toLowerCase();
+    } catch { }
+    setScope(initialScope);
 
     // Data bootstrap
     await loadCatalogue();
+    // Refresh once so display names/icons apply after catalogue loads
     await loadInventory();
 
     // Optional auto-refresh
-    if (typeof scheduleAutoRefresh === "function") {
-      try { scheduleAutoRefresh(); } catch { }
-    }
+    try { scheduleAutoRefresh(); } catch { }
   }
+
 
 
   if (els.tabs) {

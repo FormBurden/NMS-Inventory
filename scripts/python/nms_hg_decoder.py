@@ -258,8 +258,8 @@ def decode_to_json_bytes(raw: bytes, debug=False, outdir: pathlib.Path | None = 
 
 def main():
     ap = argparse.ArgumentParser(description="Decode No Man's Sky .hg save → clean JSON")
-    ap.add_argument("--in", dest="inp", required=True, help="Input .hg or .json")
-    ap.add_argument("--out", dest="out", required=True, help="Output JSON path")
+    ap.add_argument("-i", "--in", dest="inp, required=True, help="Input .hg or .json")
+    ap.add_argument("-o", "--out", dest="out", required=True, help="Output JSON path")
     ap.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     ap.add_argument("--debug", action="store_true", help="Verbose diagnostics and raw dump")
     args = ap.parse_args()
