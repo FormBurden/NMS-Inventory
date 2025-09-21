@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Root of the repo (this script lives in scripts/)
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
 
-# Defaults (override by exporting HOST/PORT/DOCROOT if you like)
-HOST="${HOST:-localhost}"
-PORT="${PORT:-8080}"
-DOCROOT="${DOCROOT:-public}"
-
-WATCHER="$ROOT_DIR/scripts/watch_saves.sh"
-
-# Start the watcher in the background (if present)
-if [[ -x "$WATCHER" || -f "$WATCHER" ]]; then
-  echo "[dev] starting watcher: $WATCHER"
-  "$WATCHER" &
-  WATCH_PID=$!
-  # Ensure watcher is cleaned up on exit
-  cleanup() { kill "$WATCH_PID" 2>/dev/null || true; }
-  trap cleanup EXIT INT TERM
-else
-  echo "[dev] watcher not found at $WATCHER (skipping)"
+# Load .env if present
+if [[ -f .env ]]; then
+  # shellcheck source=/dev/null
+  source .env
 fi
 
-# Start PHP’s built-in server in the foreground
-echo "[dev] serving on http://$HOST:$PORT (docroot: $DOCROOT)"
-exec php -S "$HOST:$PORT" -t "$ROOT_DIR/$DOCROOT"
+PHP_ADDR="${PHP_ADDR:-localhost}"
+PHP_PORT="${PHP_PORT:-8080}"
+PHP_DOCROOT="${PHP_DOCROOT:-public}"
+
+echo "[dev] preflight refresh (decode/import if needed)"
+scripts/runtime_refresh.sh
+
+echo "[dev] starting watcher: ${ROOT}/scripts/watch_saves.sh"
+scripts/watch_saves.sh >> .cache/logs/watcher.log 2>&1 & 
+WATCH_PID=$!
+
+echo "[dev] serving on http://${PHP_ADDR}:${PHP_PORT} (docroot: ${PHP_DOCROOT})"
+php -S "${PHP_ADDR}:${PHP_PORT}" -t "${PHP_DOCROOT}" &
+PHP_PID=$!
+
+# Clean shutdown
+trap 'echo "[dev] stopping..."; kill ${PHP_PID} ${WATCH_PID} 2>/dev/null || true; wait || true' INT TERM
+
+# Wait for PHP (foreground-ish)
+wait ${PHP_PID}

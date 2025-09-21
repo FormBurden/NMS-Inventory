@@ -1,119 +1,101 @@
 #!/usr/bin/env bash
-# scripts/watch_saves.sh
-# Drop-in replacement: avoids bulk-decoding old saves on startup.
-set -Eeuo pipefail
-IFS=$'\n\t'
+# Watches your NMS save directories for changes to *.hg and triggers
+# scripts/runtime_refresh.sh (which handles decode/import + skip guard).
+set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"   # scripts/ -> repo root
-DOTENV="${REPO_ROOT}/.env"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
 
-# --- dotenv ---------------------------------------------------------------
-if [[ -f "$DOTENV" ]]; then
-  # shellcheck disable=SC1090
-  source "$DOTENV"
+# Load .env if present
+if [[ -f .env ]]; then
+  # shellcheck source=/dev/null
+  source .env
 fi
 
-# Required: WATCH_SAVES_DIRS from .env
-if [[ -z "${WATCH_SAVES_DIRS:-}" ]]; then
-  echo "[ERR] WATCH_SAVES_DIRS not set in .env"
+LOG_DIR=".cache/logs"
+mkdir -p "$LOG_DIR"
+
+REFRESH_SCRIPT="${ROOT}/scripts/runtime_refresh.sh"
+if [[ ! -x "$REFRESH_SCRIPT" ]]; then
+  echo "[watch] ERROR: ${REFRESH_SCRIPT} not found or not executable." >&2
   exit 1
 fi
 
-# Optional knobs
-WATCH_SAVES_SINCE_DAYS="${WATCH_SAVES_SINCE_DAYS:-30}"
-WATCH_DECODE_ON_START="${WATCH_DECODE_ON_START:-1}"
-OUT_DIR="${DECODE_OUT_DIR:-${REPO_ROOT}/.cache/decoded}"
+# NMS_SAVES_DIRS can be colon-separated for multiple dirs. Example:
+# NMS_SAVES_DIRS="/path/one:/path two/with spaces:/another"
+DEFAULT_SAVES="/mnt/Unlimited-Gaming/SteamLibrary/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/Application Data/HelloGames/NMS/st_76561198065088580"
+SAVES_RAW="${NMS_SAVES_DIRS:-$DEFAULT_SAVES}"
 
-# Decoder hint:
-# - If NMSSAVETOOL points to a file, we call: python3 <file> <src> > out.json
-# - Else we try bare 'nmssavetool <src> > out.json'
-NMSSAVETOOL="${NMSSAVETOOL:-nmssavetool}"
-
-mkdir -p "$OUT_DIR"
-
-# Split WATCH_SAVES_DIRS on colon/comma/semicolon/space
-readarray -t WATCH_DIRS < <(printf '%s\n' "$WATCH_SAVES_DIRS" | tr ';:,' '\n' | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//' -e '/^$/d')
-
-decode_one() {
-  local src="$1"
-  local base name out tmp
-  [[ -f "$src" ]] || return 0
-  [[ "${src##*.}" == "hg" ]] || return 0
-
-  base="$(basename -- "$src")"
-  name="${base%.*}"
-  out="${OUT_DIR}/${name}.json"
-  tmp="${out}.tmp"
-
-  echo "[decode] $src -> $out"
-
-  if [[ -f "$NMSSAVETOOL" ]]; then
-    # Treat as a python module file
-    if ! python3 "$NMSSAVETOOL" "$src" > "$tmp" 2>/dev/null; then
-      echo "[ERR] decode failed via python3 $NMSSAVETOOL"
-      rm -f "$tmp"
-      return 1
-    fi
+# Split colon-separated list into an array while preserving spaces in paths
+IFS=':' read -r -a WATCH_DIRS <<< "$SAVES_RAW"
+# Keep only existing dirs
+FILTERED_DIRS=()
+for d in "${WATCH_DIRS[@]}"; do
+  if [[ -d "$d" ]]; then
+    FILTERED_DIRS+=("$d")
   else
-    # Treat as a command on PATH
-    if ! $NMSSAVETOOL "$src" > "$tmp" 2>/dev/null; then
-      echo "[ERR] decode failed via $NMSSAVETOOL (PATH). Set NMSSAVETOOL in .env to point to nmssavetool.py or binary."
-      rm -f "$tmp"
-      return 1
-    fi
+    echo "[watch] WARN: not a directory, skipping: $d"
   fi
+done
 
-  mv -f "$tmp" "$out"
-  return 0
-}
-
-initial_pass() {
-  local days="$1"
-  local cutoff
-  cutoff="$(date -d "${days} days ago" +%Y-%m-%d)"
-  echo "[info] Initial pass: only files newer than ${cutoff} (${days} days)."
-
-  for d in "${WATCH_DIRS[@]}"; do
-    [[ -d "$d" ]] || { echo "[warn] Missing dir: $d"; continue; }
-    # GNU find: -newermt supports the readable date form.
-    while IFS= read -r -d '' f; do
-      decode_one "$f"
-    done < <(find "$d" -type f -name '*.hg' -newermt "$cutoff" -print0)
-  done
-}
-
-watch_loop() {
-  command -v inotifywait >/dev/null 2>&1 || {
-    echo "[ERR] inotifywait not found. Install inotify-tools."
-    exit 1
-  }
-
-  # Build inotify list
-  local args=()
-  for d in "${WATCH_DIRS[@]}"; do
-    [[ -d "$d" ]] && args+=("$d")
-  done
-  [[ "${#args[@]}" -gt 0 ]] || {
-    echo "[ERR] No valid directories to watch."
-    exit 1
-  }
-
-  echo "[watch] Monitoring for new/updated *.hg files under:"
-  printf '  - %s\n' "${args[@]}"
-
-  inotifywait -m -e close_write,create,move --format '%w%f' "${args[@]}" | \
-  while IFS= read -r path; do
-    [[ "${path##*.}" == "hg" ]] || continue
-    decode_one "$path"
-  done
-}
-
-# --- run ------------------------------------------------------------------
-if [[ "$WATCH_DECODE_ON_START" == "1" ]]; then
-  initial_pass "$WATCH_SAVES_SINCE_DAYS"
-else
-  echo "[info] Skipping initial decode pass (WATCH_DECODE_ON_START=0)."
+if [[ ${#FILTERED_DIRS[@]} -eq 0 ]]; then
+  echo "[watch] ERROR: No valid save directories to watch." >&2
+  exit 1
 fi
 
-watch_loop
+echo "[watch] watching ${#FILTERED_DIRS[@]} dir(s) for *.hg changes:"
+for d in "${FILTERED_DIRS[@]}"; do
+  echo "        - $d"
+fi
+
+# Debounce settings
+DEBOUNCE_SECS="${NMS_WATCH_DEBOUNCE_SECS:-2}"
+last_run=0
+
+trigger_refresh() {
+  local now
+  now="$(date +%s)"
+  if (( now - last_run < DEBOUNCE_SECS )); then
+    return 0
+  fi
+  echo "[watch] change detected → running runtime_refresh.sh"
+  # Log refresh output separately; watcher.log is handled by dev_server.sh
+  "${REFRESH_SCRIPT}" >> "${LOG_DIR}/watcher.refresh.log" 2>&1 || {
+    echo "[watch] ERROR: refresh failed; see ${LOG_DIR}/watcher.refresh.log" >&2
+  }
+  last_run="$(date +%s)"
+}
+
+# Prefer inotify if available
+if command -v inotifywait >/dev/null 2>&1; then
+  echo "[watch] using inotifywait (recursive)."
+  # Start a single inotify stream over all dirs
+  # Events: create, move, close_write cover new/updated saves
+  inotifywait -m -r \
+    -e create -e move -e close_write \
+    --format '%w%f' \
+    -- "${FILTERED_DIRS[@]}" | while IFS= read -r path; do
+      # only react to .hg files
+      if [[ "$path" == */save*.hg ]]; then
+        trigger_refresh
+      fi
+    done
+else
+  echo "[watch] inotifywait not found; falling back to polling (5s)."
+  # Poll hash of (*.hg path + mtime) across watched dirs
+  last_hash=""
+  while true; do
+    # Build a stable signature of current .hg set
+    current_hash="$(
+      find "${FILTERED_DIRS[@]}" -type f -name 'save*.hg' -printf '%p %T@\n' \
+        | sort \
+        | sha256sum \
+        | awk '{print $1}'
+    )"
+    if [[ "$current_hash" != "$last_hash" ]]; then
+      trigger_refresh
+      last_hash="$current_hash"
+    fi
+    sleep 5
+  done
+fi
