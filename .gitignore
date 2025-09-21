@@ -73,3 +73,5 @@ tmp/
 # Script outputs (keep these specific so we don't ignore all CSVs)
 ledger.csv
 totals.csv
+
+output/*
