@@ -20,7 +20,8 @@ SLOTS="$OUTDIR/${NMS_PROFILE}_slots.csv"
 TOTALS="$OUTDIR/${NMS_PROFILE}_totals.csv"
 
 dbq() { MYSQL_PWD="$NMS_DB_PASS" mariadb --local-infile=1 \
-  -h "$NMS_DB_HOST" -P "$NMS_DB_PORT" -u "$NMS_DB_USER" -D "$NMS_DB_NAME" -N -B -e "$1"; }
+  -h "$NMS_DB_HOST" -P "$NMS_DB_PORT" \
+  -u "$NMS_DB_USER" -D "$NMS_DB_NAME" -N -B -e "$1"; }
 
 escape_sql() { printf "%s" "$1" | sed "s/'/''/g"; }
 
