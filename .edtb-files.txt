@@ -1,2 +1,0 @@
-scripts/collect_debug_bundle.sh
-.nmsinventory-files.txt
