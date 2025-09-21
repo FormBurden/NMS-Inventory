@@ -21,11 +21,12 @@ NMS_DB_USER="${NMS_DB_USER:-nms_user}"
 # Optional for non-interactive imports:
 # NMS_DB_PASS="yourpassword"
 
+# Skip when unchanged (1 = on)
 NMS_SKIP_DECODE_ON_UNCHANGED="${NMS_SKIP_DECODE_ON_UNCHANGED:-1}"
+# Age window for “recent” (days)
 NMS_CUTOFF_DAYS="${NMS_CUTOFF_DAYS:-30}"
+# Debug the fingerprints we compare (0/1)
 NMS_DEBUG_FINGERPRINTS="${NMS_DEBUG_FINGERPRINTS:-0}"
-# Use your local TZ to format/parse times so they match the manifest
-NMS_LOCAL_TZ="${NMS_LOCAL_TZ:-America/Denver}"
 
 LOG_DIR=".cache/logs"
 DECODED_DIR=".cache/decoded"
@@ -49,7 +50,7 @@ if [[ ${#FILTERED_DIRS[@]} -eq 0 ]]; then
 fi
 
 # ---- Build candidate fingerprint from top-2 REAL saves (save*.hg) ------------
-cutoff_ts="$(date -d "-${NMS_CUTOFF_DAYS} days" +%s)"
+cutoff_ts="$(date -u -d "-${NMS_CUTOFF_DAYS} days" +%s)"
 
 mapfile -t recent_hg < <(
   find "${FILTERED_DIRS[@]}" -type f -name 'save*.hg' -printf '%T@|%p\n' 2>/dev/null \
@@ -58,7 +59,7 @@ mapfile -t recent_hg < <(
     | head -n 2
 )
 
-declare -a cand_strs=()
+declare -a cand_strs_utc=()
 declare -a cand_epochs=()
 for line in "${recent_hg[@]:-}"; do
   ts="${line%%|*}"
@@ -66,14 +67,13 @@ for line in "${recent_hg[@]:-}"; do
   [[ -n "${ts:-}" && -n "${path:-}" ]] || continue
   base="${path##*/}"
   epoch="${ts%.*}"
-  # Format mtime string in configured local TZ to align with manifest
-  mtime_str="$(TZ="$NMS_LOCAL_TZ" date -d "@${epoch}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)"
-  [[ -n "$mtime_str" ]] || continue
-  cand_strs+=("${base},${mtime_str}")
+  # IMPORTANT: format the string in UTC to match manifest’s source_mtime
+  mtime_str_utc="$(TZ=UTC date -u -d "@${epoch}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)"
+  [[ -n "$mtime_str_utc" ]] || continue
+  cand_strs_utc+=("${base},${mtime_str_utc}")
   cand_epochs+=("${base},${epoch}")
 done
 
-# sort helpers
 join_sorted() {
   if [[ $# -eq 0 ]]; then
     echo ""
@@ -81,28 +81,27 @@ join_sorted() {
   fi
   printf '%s\n' "$@" | sort | paste -sd'|' -
 }
-
-candidate_fp_str="$(join_sorted "${cand_strs[@]:-}")"
+candidate_fp_str="$(join_sorted "${cand_strs_utc[@]:-}")"
 candidate_fp_epoch="$(join_sorted "${cand_epochs[@]:-}")"
 
-# ---- Extract manifest fingerprints (string + epoch) --------------------------
+# ---- Extract manifest fingerprints (treat source_mtime as UTC) ---------------
 manifest_fp_str=""
 manifest_fp_epoch=""
 
 if [[ -s "$MANIFEST" ]]; then
   if command -v jq >/dev/null 2>&1; then
-    # string form (basename,source_mtime)
+    # String form (basename,source_mtime) — manifest times are UTC-like strings
     manifest_fp_str="$(jq -r '
       .items
       | map( ((.source_path|split("/")|last) + "," + .source_mtime) )
       | sort | join("|")
     ' "$MANIFEST")"
 
-    # epoch form (basename,epoch) using NMS_LOCAL_TZ for parsing
+    # Epoch form (basename,epoch) — parse source_mtime as UTC
     mapfile -t _m_epochs < <(
       jq -r '.items[] | "\((.source_path|split("/")|last))\t\(.source_mtime)"' "$MANIFEST" \
       | while IFS=$'\t' read -r base sm; do
-          if epoch="$(TZ="$NMS_LOCAL_TZ" date -d "$sm" +%s 2>/dev/null)"; then
+          if epoch="$(TZ=UTC date -u -d "$sm" +%s 2>/dev/null)"; then
             printf '%s,%s\n' "$base" "$epoch"
           fi
         done | sort
@@ -143,7 +142,7 @@ if [[ "$NMS_DEBUG_FINGERPRINTS" == "1" ]]; then
   } >> "${LOG_DIR}/runtime.debug.log"
 fi
 
-# ---- Skip guard --------------------------------------------------------------
+# ---- Skip guard (string OR epoch match) --------------------------------------
 should_skip=0
 if [[ "$NMS_SKIP_DECODE_ON_UNCHANGED" == "1" ]]; then
   if [[ -n "$candidate_fp_str" && -n "$manifest_fp_str" && "$candidate_fp_str" == "$manifest_fp_str" ]]; then
