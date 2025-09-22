@@ -6,6 +6,10 @@
 #   scripts/jq_inventory_reports.sh delta-breakdown <BASE.json> <TARGET.json>
 #   scripts/jq_inventory_reports.sh pivot
 #   scripts/jq_inventory_reports.sh owner-category
+#   scripts/jq_inventory_reports.sh owner-category-nz
+#   scripts/jq_inventory_reports.sh owner-category-delta <BASE.json> <TARGET.json>
+#   scripts/jq_inventory_reports.sh owner-items-top-delta <BASE.json> <TARGET.json> [N]
+#   scripts/jq_inventory_reports.sh owner-items-top [N]
 #   scripts/jq_inventory_reports.sh fields
 #   scripts/jq_inventory_reports.sh currencies
 #   scripts/jq_inventory_reports.sh items-top [N]
@@ -59,7 +63,7 @@ case "$mode" in
     "$JQ_BIN" -s -r '
       def totmap(o):
         ((o._rollup? // {}).inventory? // {}).by_category? // {}
-        | to_entries | map({(.key): (.value.total // 0)}) | add // {};
+        | to_entries | map({(.key): ((.value | if (type=="number") then . else (.total // 0) end))}) | add // {};
       .[0] as $A | .[1] as $B
       | (totmap($A)) as $base | (totmap($B)) as $curr
       | ([$base,$curr] | add | keys | sort) as $cats
@@ -99,7 +103,7 @@ case "$mode" in
     "$JQ_BIN" -s --argjson NAMES "$NAMES_JSON" -r '
       def totmap(o):
         ((o._rollup? // {}).inventory? // {}).by_category? // {}
-        | to_entries | map({(.key): (.value.total // 0)}) | add // {};
+        | to_entries | map({(.key): ((.value | if (type=="number") then . else (.total // 0) end))}) | add // {};
       . as $arr | ($arr | map(totmap(.))) as $maps
       | (reduce $maps[] as $m ({}; . + $m) | keys | sort) as $cats
       | "category\t" + ($NAMES | join("\t")),
@@ -110,16 +114,112 @@ case "$mode" in
   owner-category)
     for f in output/fullparse/*.full.json; do F="$(basename "$f")"
       OUT="$("$JQ_BIN" -r '
+        def as_total(v): if (v|type)=="number" then v else (v.total // 0) end;
         ((._rollup? // {}).inventory? // {}).by_owner_by_category? // {}
         | to_entries[]? as $own
         | $own.value | to_entries[]
-        | [ "'"$F"'", $own.key, .key, (.value.total // 0) ] | @tsv
+        | [ "'"$F"'", $own.key, .key, as_total(.value) ] | @tsv
       ' "$f")"
       if [ -n "$OUT" ]; then
         echo "== $F"; echo -e "file\towner\tcategory\ttotal"; echo "$OUT"; echo
       fi
     done
   ;;
+  owner-category-nz)
+    for f in output/fullparse/*.full.json; do F="$(basename "$f")"
+      OUT="$("$JQ_BIN" -r '
+        def as_total(v): if (v|type)=="number" then v else (v.total // 0) end;
+        ((._rollup? // {}).inventory? // {}).by_owner_by_category? // {}
+        | to_entries[]? as $own
+        | $own.value | to_entries[]
+        | select(as_total(.value) > 0)
+        | [ "'"$F"'", $own.key, .key, as_total(.value) ] | @tsv
+      ' "$f")"
+      if [ -n "$OUT" ]; then
+        echo "== $F"; echo -e "file\towner\tcategory\ttotal"; echo "$OUT"; echo
+      fi
+    done
+  ;;
+
+  owner-category-delta)
+    BASE="${2:-}"; TARGET="${3:-}"
+    [ -n "$BASE" ] && [ -n "$TARGET" ] || die "owner-category-delta requires BASE and TARGET"
+    OUT="$("$JQ_BIN" -s -r '
+      def as_total(v): if (v|type)=="number" then v else (v.total // 0) end;
+      def omap(o):
+        ((o._rollup? // {}).inventory? // {}).by_owner_by_category? // {}
+        | to_entries
+        | map({ key: .key,
+                value: ( .value
+                         | to_entries
+                         | map({ (.key): as_total(.value) })
+                         | add ) })
+        | from_entries;
+      .[0] as $A | .[1] as $B
+      | (omap($A)) as $base | (omap($B)) as $curr
+      | ( ([$base,$curr] | map(to_entries|map(.key)) | add | unique) ) as $owners
+      | (["general","tech","cargo","total"]) as $cats
+      | ( $owners[] as $o
+          | ($base[$o] // {}) as $bo
+          | ($curr[$o] // {}) as $co
+          | $cats[] as $c
+          | ( ($bo[$c] // 0) ) as $b
+          | ( ($co[$c] // 0) ) as $t
+          | [ $o, $c, $b, $t, ($t - $b) ] | @tsv )
+    ' "$BASE" "$TARGET")"
+    if [ -n "$OUT" ]; then
+      echo "== $(basename "$TARGET") vs $(basename "$BASE")"
+      echo -e "owner\tcategory\tbase_total\ttarget_total\tdelta"
+      echo "$OUT"; echo
+    fi
+  ;;
+
+
+
+
+  owner-items-top)
+    N="${2:-20}"
+    for f in output/fullparse/*.full.json; do F="$(basename "$f")"
+      OUT="$("$JQ_BIN" --argjson N "$N" -r '
+        (._rollup?.inventory?.by_owner_top_items // {}) as $M
+        | $M | to_entries[] as $e
+        | ($e.value[:$N] // [])[]
+        | [ "'"$F"'", $e.key, .code, (.count // 0) ] | @tsv
+      ' "$f")"
+      if [ -n "$OUT" ]; then
+        echo "== $F (top $N per owner)"; echo -e "file\towner\tcode\tcount"; echo "$OUT"; echo
+      fi
+    done
+  ;;
+
+  owner-items-top-delta)
+    BASE="${2:-}"; TARGET="${3:-}"; N="${4:-15}"
+    [ -n "$BASE" ] && [ -n "$TARGET" ] || die "owner-items-top-delta requires BASE and TARGET"
+    OUT="$("$JQ_BIN" -s --argjson N "$N" -r '
+      def to_map(arr): reduce arr[]? as $e ({}; .[$e.code] = ($e.count // 0));
+      def topmap(o):
+        (o._rollup?.inventory?.by_owner_top_items // {}) as $M
+        | ($M | to_entries
+            | map({ (.key): ( to_map(.value) ) })
+            | add) // {};
+      .[0] as $A | .[1] as $B
+      | (topmap($A)) as $base | (topmap($B)) as $curr
+      | ( ([$base,$curr] | map(keys) | add | unique) ) as $owners
+      | ( $owners[] as $o
+          | ($base[$o] // {}) as $bo
+          | ($curr[$o] // {}) as $co
+          | ( ( ($co|to_entries|sort_by(-.value)|.[0:$N]|map(.key))
+               + ( $bo|to_entries|sort_by(-.value)|.[0:$N]|map(.key)) ) | unique ) as $codes
+          | ($codes[] as $c
+             | [ $o, $c, ($bo[$c] // 0), ($co[$c] // 0), (($co[$c] // 0) - ($bo[$c] // 0)) ] | @tsv ) )
+    ' "$BASE" "$TARGET")"
+    if [ -n "$OUT" ]; then
+      echo "== $(basename "$TARGET") vs $(basename "$BASE") (top $N per owner, union of topN)"
+      echo -e "owner\tcode\tbase_count\ttarget_count\tdelta"
+      echo "$OUT"; echo
+    fi
+  ;;
+
 
   fields)
     for f in output/fullparse/*.full.json; do F="$(basename "$f")"
@@ -304,6 +404,10 @@ Usage:
   $0 delta-breakdown <BASE.json> <TARGET.json>
   $0 pivot
   $0 owner-category
+  $0 owner-category-nz
+  $0 owner-category-delta <BASE.json> <TARGET.json>
+  $0 owner-items-top [N]
+  $0 owner-items-top-delta <BASE.json> <TARGET.json> [N]
   $0 fields
   $0 currencies
   $0 items-top [N]

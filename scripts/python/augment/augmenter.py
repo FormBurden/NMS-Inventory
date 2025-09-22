@@ -4,7 +4,7 @@ from .io_utils import load_json, save_json, read_json_lenient
 from .extractors import (
     build_top_items, find_pm_slots, compute_pm_usage,
     find_top_shapes, discover_storage_container_count,
-    guess_pm_labels
+    guess_pm_labels, collect_owner_items
 )
 
 def _owners_aggregate(idxmap, labels):
@@ -33,6 +33,48 @@ def _owners_aggregate(idxmap, labels):
         o['t_empty'] += max(tc-tu, 0)
         o['c_empty'] += max(cc-cu, 0)
     return out
+
+def _owner_item_rollups(owner_items, labels):
+    """
+    Using {index: Counters}, aggregate into by_owner_by_category and by_owner_top_items.
+    by_owner_by_category[label] = {general:{total}, tech:{total}, cargo:{total}, total}
+    by_owner_top_items[label] = [{code,count} ...]
+    """
+    # index -> label map
+    idx2label = {row['index']: row['label'] for row in labels}
+    per_label_cat = {}
+    merged_codes = {}
+
+    for idx, per in owner_items.items():
+        lab = idx2label.get(idx, 'Unknown')
+        cat = per_label_cat.setdefault(lab, {'general':0,'tech':0,'cargo':0})
+        cat['general'] += sum(per['general'].values())
+        cat['tech']    += sum(per['tech'].values())
+        cat['cargo']   += sum(per['cargo'].values())
+
+        cc = merged_codes.setdefault(lab, {})
+        from collections import Counter
+        total_ctr = Counter(cc)
+        total_ctr.update(per['general'])
+        total_ctr.update(per['tech'])
+        total_ctr.update(per['cargo'])
+        merged_codes[lab] = dict(total_ctr)
+
+    by_owner_by_category = {}
+    by_owner_top_items   = {}
+    for lab, c in per_label_cat.items():
+        by_owner_by_category[lab] = {
+            'general': {'total': c['general']},
+            'tech':    {'total': c['tech']},
+            'cargo':   {'total': c['cargo']},
+            'total':   c['general'] + c['tech'] + c['cargo']
+        }
+        # top list
+        items = merged_codes.get(lab, {})
+        top_sorted = sorted(items.items(), key=lambda kv: (-kv[1], kv[0]))[:200]
+        by_owner_top_items[lab] = [{'code':k, 'count':v} for k,v in top_sorted]
+
+    return by_owner_by_category, by_owner_top_items
 
 def build_augments(decoded_obj):
     # currencies
@@ -66,6 +108,10 @@ def build_augments(decoded_obj):
     pm_labels = guess_pm_labels(pm_slots, pm_usage)
     owners_guess = _owners_aggregate(idxmap, pm_labels)
 
+    # owner items
+    owner_items = collect_owner_items(decoded_obj)
+    by_owner_by_category, by_owner_top_items = _owner_item_rollups(owner_items, pm_labels)
+
     return {
         'currencies': {
             **({'Units': units} if isinstance(units,(int,float)) else {}),
@@ -80,6 +126,8 @@ def build_augments(decoded_obj):
             'pm_usage': pm_usage,
             'pm_labels': pm_labels,
             'owners_guess': owners_guess,
+            'by_owner_by_category': by_owner_by_category,
+            'by_owner_top_items': by_owner_top_items,
             'top_shapes': shapes,
             'storage_container_count': storage_cnt
         }
@@ -98,6 +146,7 @@ def augment_one(full_path, decoded_path, in_place=False, out_path=None):
     inv = full['_rollup'].setdefault('inventory', {})
     for k in ('top_items','total_items_flat','distinct_items',
               'pm_slots','pm_usage','pm_labels','owners_guess',
+              'by_owner_by_category','by_owner_top_items',
               'top_shapes','storage_container_count'):
         inv[k] = aug['inventory'][k]
 

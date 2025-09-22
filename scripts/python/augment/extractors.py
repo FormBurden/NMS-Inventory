@@ -43,17 +43,18 @@ def find_pm_slots(decoded_obj):
 
 def _extract_coords_from_list(lst):
     coords = set()
-    if not isinstance(lst, list): 
+    if not isinstance(lst, list):
         return coords
     for it in lst:
         if not isinstance(it, dict): 
             continue
-        if (">Qh" in it and "XJ>" in it and
-            isinstance(it[">Qh"], int) and isinstance(it["XJ>"], int)):
+        if (">Qh" in it and "XJ>" in it
+            and isinstance(it[">Qh"], int) and isinstance(it["XJ>"], int)):
             coords.add((it[">Qh"], it["XJ>"]))
-        elif ("3ZH" in it and "Vn8" in it and
-              isinstance(it["3ZH"], int) and isinstance(it["Vn8"], int)):
-            coords.add((it["3ZH"], it["Vn8"]))
+        elif ("3ZH" in it and "Vn8" in it
+              and isinstance(it["3ZH"], dict) and isinstance(it["Vn8"], dict)
+              and isinstance(it["3ZH"].get(">Qh"), int) and isinstance(it["3ZH"].get("XJ>"), int)):
+            coords.add((it["3ZH"][">Qh"], it["3ZH"]["XJ>"]))
     return coords
 
 def _section_used(owner_section):
@@ -133,7 +134,6 @@ def guess_pm_labels(pm_slots, pm_usage):
             'c_used': u.get('cargo_used',0),
         })
 
-    # initial labels
     labels = {i:'Unknown' for i in idx.keys()}
     ship_candidates = []
 
@@ -147,7 +147,7 @@ def guess_pm_labels(pm_slots, pm_usage):
 
     # pick current ship = max (g_used+t_used)
     if ship_candidates:
-        def used_sum(i): 
+        def used_sum(i):
             vi = idx[i]; return int(vi.get('g_used',0)) + int(vi.get('t_used',0))
         ship_candidates.sort(key=lambda i: (-used_sum(i), i))
         if used_sum(ship_candidates[0]) > 0:
@@ -159,3 +159,30 @@ def guess_pm_labels(pm_slots, pm_usage):
                 labels[i] = 'Ship'
 
     return [{'index': i, 'label': labels[i]} for i in sorted(labels.keys())]
+
+# ------------------------- Owner items --------------------
+
+def collect_owner_items(decoded_obj):
+    """
+    Returns {index: {'general': Counter, 'tech': Counter, 'cargo': Counter}}
+    by scanning P;m[IDX] sections for per-slot item dicts with codes under 'b2n'.
+    """
+    vLc6f = safe_get(decoded_obj, ('vLc','6f='), {})
+    pm = vLc6f.get('P;m')
+    result = {}
+    if isinstance(pm, list):
+        for idx, owner in enumerate(pm):
+            per = {'general': Counter(), 'tech': Counter(), 'cargo': Counter()}
+            for cat, key in (('general',';l5'),('tech','PMT'),('cargo','gan')):
+                sec = owner.get(key, {})
+                for subk, arr in list(sec.items()):
+                    if subk == 'hl?': 
+                        continue
+                    if isinstance(arr, list):
+                        for it in arr:
+                            if isinstance(it, dict):
+                                code = it.get('b2n') or it.get('JWK')
+                                if isinstance(code, str):
+                                    per[cat][code] += 1
+            result[idx] = per
+    return result
