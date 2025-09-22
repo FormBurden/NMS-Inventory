@@ -3,7 +3,7 @@
 import argparse, json, os, re, sys
 from typing import Any, Dict, List, Optional
 
-# ---------- tolerant loader ----------
+# --- tolerant loader for decoded & full JSONs (handles trailing bytes) ---
 def load_json_relaxed(path: str) -> Any:
     import json as _j
     s = open(path, "r", encoding="utf-8", errors="ignore").read()
@@ -41,33 +41,16 @@ def as_int(x: Any, d: int = 0) -> int:
     try: return int(x)
     except: return d
 
-# ---------- simple predicates ----------
+# --- import lang util (same folder) ---
+try:
+    import lang_util  # scripts/python/tools/lang_util.py
+except Exception:
+    lang_util = None
+
+# --- simple predicates ---
 _HEX_GUID = re.compile(r"^0x[0-9A-Fa-f]{8,}$")
 def is_code_like(s: str) -> bool:
     return s.startswith("^") or _HEX_GUID.match(s) is not None
-
-# --- optional localization (for strings like ^UI_...) ---
-LANG: Dict[str, str] = {}
-
-def load_lang_map(path: str) -> None:
-    """Load a simple key->string map for localizing ^KEY tokens."""
-    global LANG
-    try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
-            m = json.load(fh)
-        # Normalize: accept keys with or without leading ^
-        LANG = { (k[1:] if isinstance(k, str) and k.startswith("^") else k): v
-                 for k, v in m.items() if isinstance(k, str) and isinstance(v, str) }
-    except Exception:
-        LANG = {}
-
-def nms_localize(s: str) -> str:
-    """If s looks like ^KEY and exists in LANG, return localized; else return s unchanged."""
-    if isinstance(s, str) and s.startswith("^"):
-        key = s[1:]
-        return LANG.get(key, s)
-    return s
-
 
 def any_str_matches(x: Any, rx: re.Pattern, limit: int = 1) -> bool:
     found=0
@@ -104,49 +87,8 @@ def get_by_path(root: Any, path: str) -> Optional[Any]:
         cur=cur[seg]
     return cur
 
-# ---------- name/class/slots helpers ----------
-def pick_name(d: Dict[str, Any]) -> str:
-    best=""
-    for k,v in d.items():
-        if isinstance(v,str) and not is_code_like(v):
-            # prefer names with spaces / mixed case and reasonable length
-            score = (1 if " " in v else 0) + (1 if any(c.islower() for c in v) and any(c.isupper() for c in v) else 0)
-            if 3 <= len(v) <= 48: score += 1
-            if score >= 1 and len(v) > len(best): best=v
-    return best
-
-def pick_class(d: Dict[str, Any]) -> str:
-    # exact S/A/B/C somewhere shallow
-    for v in d.values():
-        if isinstance(v,str) and v in ("S","A","B","C"): return v
-        if isinstance(v,dict):
-            for vv in v.values():
-                if isinstance(vv,str) and vv in ("S","A","B","C"): return vv
-    return ""
-
-def detect_items_key_from_samples(sample_info: Dict[str,Any]) -> Optional[str]:
-    # Look into first_keys and flat_keys for a likely items array key (e.g., "kr6")
-    fk = sample_info.get("first_keys") or []
-    fl = sample_info.get("flat_keys")  or []
-    # prefer short keys that also appear as "[0]" in flat_keys (means list)
-    candidates = []
-    for k in fk:
-        if not isinstance(k,str): continue
-        if len(k) > 6: continue
-        if any(s.startswith(f"{k}[0]") or s == k for s in fl):
-            candidates.append(k)
-    # fallback: any short key
-    if not candidates:
-        candidates = [k for k in fk if isinstance(k,str) and len(k) <= 6]
-    return candidates[0] if candidates else None
-
+# --- name/class/slots helpers ---
 def items_key_for_element(elem: Dict[str,Any], sample_info: Dict[str,Any]) -> Optional[str]:
-    """
-    Choose the real items array key for THIS element:
-      1) keys that are lists-of-dicts in elem
-      2) prefer keys also present in samples.first_keys (short names)
-      3) break ties by longer list length
-    """
     if not isinstance(elem, dict): return None
     list_keys = [k for k,v in elem.items() if isinstance(v, list) and v and all(isinstance(e,dict) for e in v)]
     if not list_keys: return None
@@ -157,34 +99,28 @@ def items_key_for_element(elem: Dict[str,Any], sample_info: Dict[str,Any]) -> Op
 def inv_slots_from_element(elem: Dict[str,Any], items_key: Optional[str]) -> int:
     if items_key and isinstance(elem.get(items_key), list):
         return len(elem[items_key])
-    # fallback: biggest short-named list of dicts
     best_len = -1
     for k,v in elem.items():
         if isinstance(v,list) and v and all(isinstance(e,dict) for e in v) and len(k)<=6:
             if len(v) > best_len: best_len = len(v)
     return max(best_len, 0)
 
-def map_asset(elem: Dict[str,Any], sample_info: Dict[str,Any]) -> Dict[str,Any]:
-    # Name: scan shallow + one nested layer for candidate strings, localize ^KEYs, and choose a human-looking one.
+def map_asset(elem: Dict[str,Any], sample_info: Dict[str,Any], localize) -> Dict[str,Any]:
+    # Name: collect shallow + one nested layer, localize ^KEY, pick human-looking
     candidates: List[str] = []
     for k,v in elem.items():
-        if isinstance(v,str):
-            candidates.append(nms_localize(v))
+        if isinstance(v,str): candidates.append(localize(v))
         elif isinstance(v,dict):
             for vv in v.values():
-                if isinstance(vv,str):
-                    candidates.append(nms_localize(vv))
-    name = ""
+                if isinstance(vv,str): candidates.append(localize(vv))
+    name=""
     for s in candidates:
-        if not s or s.startswith("^"):  # unresolved ^KEY
-            continue
-        # basic heuristics: contains space or mixed case or decent length
+        if not s or s.startswith("^"): continue
         score = (1 if " " in s else 0) + (1 if any(c.islower() for c in s) and any(c.isupper() for c in s) else 0)
         if 3 <= len(s) <= 48: score += 1
-        if score >= 1 and len(s) > len(name):
-            name = s
+        if score >= 1 and len(s) > len(name): name = s
 
-    # Class: shallow S/A/B/C if present
+    # Class: shallow S/A/B/C
     klass=""
     for v in elem.values():
         if isinstance(v,str) and v in ("S","A","B","C"): klass=v; break
@@ -193,28 +129,21 @@ def map_asset(elem: Dict[str,Any], sample_info: Dict[str,Any]) -> Dict[str,Any]:
                 if isinstance(vv,str) and vv in ("S","A","B","C"): klass=vv; break
         if klass: break
 
-    # Slots from the real items list (per-element key)
-    items_key = items_key_for_element(elem, sample_info)
-    slots = inv_slots_from_element(elem, items_key)
-
+    slots = inv_slots_from_element(elem, items_key_for_element(elem, sample_info))
     out={"inv":{"w":0,"h":0,"slots":slots,"tech_count":0}}
     if name:  out["name"]=name
     if klass: out["class"]=klass
     return out
 
-
-
-# ---------- extractors ----------
-def extract_assets(save: Dict[str,Any], samples: Dict[str,Any], log: List[str]) -> Dict[str,Any]:
+def extract_assets(save: Dict[str,Any], samples: Dict[str,Any], log: List[str], localize) -> Dict[str,Any]:
     res={"ships":[],"multitools":[],"exocraft":[],"freighter":[]}
     for label in ("ships","multitools","exocraft"):
         info = samples.get(label) or {}
         path = info.get("path","")
-        items_key = detect_items_key_from_samples(info)
         arr = get_by_path(save, path)
         if isinstance(arr,list) and arr:
             log.append(f"[assets] {label} via samples path='{path}' len={len(arr)}")
-            res[label] = [ map_asset(e, info) for e in arr[:12] if isinstance(e,dict) ]
+            res[label] = [ map_asset(e, info, localize) for e in arr[:12] if isinstance(e,dict) ]
         else:
             rx={"ships":re.compile(r"\b(PlayerShipBase|Starship)\b",re.I),
                 "multitools":re.compile(r"(MULTITOOL\.SCENE|Multi.?Tool)",re.I),
@@ -222,7 +151,7 @@ def extract_assets(save: Dict[str,Any], samples: Dict[str,Any], log: List[str]) 
             hits=find_arrays_with_value(save,rx)
             if hits:
                 log.append(f"[assets:fallback] {label} via value rx; len={len(hits[0])}")
-                res[label] = [ map_asset(e, {}) for e in hits[0][:12] if isinstance(e,dict) ]
+                res[label] = [ map_asset(e, {}, localize) for e in hits[0][:12] if isinstance(e,dict) ]
     # freighter: value match
     fr_rx=re.compile(r"\b(Freighter|FreighterBase|FreighterCargo|Capital Ship)\b",re.I)
     def find_object(n):
@@ -239,20 +168,19 @@ def extract_assets(save: Dict[str,Any], samples: Dict[str,Any], log: List[str]) 
     fo=find_object(save)
     if isinstance(fo,dict):
         log.append("[assets] freighter via value rx")
-        res["freighter"]=[ map_asset(fo, None) ]
+        res["freighter"]=[ map_asset(fo, {}, localize) ]
     return res
 
-def extract_teleport(save: Dict[str,Any], samples: Dict[str,Any], log: List[str]) -> List[Dict[str,Any]]:
+def extract_teleport(save: Dict[str,Any], samples: Dict[str,Any], log: List[str], localize) -> List[Dict[str,Any]]:
     info=samples.get("teleport") or {}
     path=info.get("path","")
     arr=get_by_path(save,path)
     out=[]
     def pick_strings_localized(t: Dict[str,Any]) -> List[str]:
-        # Prefer localized/human strings; skip raw ^KEY unless we can't find anything else.
         human=[]; raw=[]
         for v in t.values():
             if isinstance(v,str):
-                lv = nms_localize(v)
+                lv = localize(v)
                 raw.append(lv)
                 if not lv.startswith("^") and not is_code_like(lv):
                     human.append(lv)
@@ -279,8 +207,6 @@ def extract_teleport(save: Dict[str,Any], samples: Dict[str,Any], log: List[str]
                     if vals and vals[0]: out.append({"label": vals[0]})
     return out
 
-
-
 def extract_currencies(save: Dict[str, Any], log: List[str]) -> Dict[str,int]:
     out={}
     def walk(n,path:str):
@@ -295,22 +221,16 @@ def extract_currencies(save: Dict[str, Any], log: List[str]) -> Dict[str,int]:
             for i,v in enumerate(n[:8]): walk(v, f"{path}[{i}]")
     walk(save,""); return out
 
-# ---------- main ----------
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--decoded",required=True)
     ap.add_argument("--full",required=True)
     ap.add_argument("--samples",help="output/deepdebug/<basename>.assets.samples.json")
+    ap.add_argument("--locale", help='Locale priority list, e.g. "en-us,en" (default: env NMS_LANG or "en-us,en,en-gb")')
     ap.add_argument("--in-place",action="store_true")
-    ap.add_argument("--lang", help="Path to a JSON key->string map to translate ^KEY tokens")
     args=ap.parse_args()
 
-    # optional localization map
-    if args.lang and os.path.exists(args.lang):
-        load_lang_map(args.lang)
-
-
-    # load samples (explicit or guessed path)
+    # Load samples (explicit or guessed path)
     samples={}
     if args.samples and os.path.exists(args.samples):
         samples=load_json_relaxed(args.samples)
@@ -319,15 +239,26 @@ def main():
         guess=os.path.join("output","deepdebug",f"{base}.assets.samples.json")
         if os.path.exists(guess): samples=load_json_relaxed(guess)
 
+    # Auto-load language map (defaults)
+    localize = (lambda s: s)
+    lang_stats = {}
+    if lang_util:
+        loc_order = lang_util.parse_locale_list(args.locale) or lang_util.default_locale_order()
+        lang_map, lang_stats = lang_util.build_lang_map(loc_order)
+        localize = (lambda s, _m=lang_map: lang_util.localize(s, _m))
+
     save=load_json_relaxed(args.decoded)
     full=load_json_relaxed(args.full)
 
     log=[]
+    if lang_stats:
+        log.append(f"[lang] aa_files={lang_stats.get('aa_files',0)} curated_files={lang_stats.get('curated_files',0)} entries={lang_stats.get('entries',0)}")
+
     deep={
-        "assets":extract_assets(save,samples,log),
-        "teleport_history":extract_teleport(save,samples,log),
+        "assets":extract_assets(save,samples,log,localize),
+        "teleport_history":extract_teleport(save,samples,log,localize),
         "currencies":extract_currencies(save,log),
-        "owner_slots":{},  # can be filled later with precise owners
+        "owner_slots":{},
         "extract_log":log[:200],
     }
     rr=full.setdefault("_rollup",{}); rr["deep"]=deep
