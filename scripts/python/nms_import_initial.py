@@ -230,6 +230,28 @@ def run_nmssavetool(src: Path, out_json: Path, decoder_hint: str | None) -> None
         f'  python3 "{decoder_hint or "nmssavetool"}" decompress "{src}" "{out_json}"\n'
     )
 
+# ---------- full-parse runner ----------
+FULLPARSE_DIR = DATA_DIR_PATH / "output" / "fullparse"
+
+def run_fullparse(in_json: Path, out_full: Path) -> None:
+    """
+    Invoke our enrichment pass:
+      python3 -m scripts.python.nms_fullparse -i <in_json> -o <out_full>
+    Runs from repo root so package imports resolve.
+    """
+    out_full.parent.mkdir(parents=True, exist_ok=True)
+    argv = [sys.executable, "-m", "scripts.python.nms_fullparse", "-i", str(in_json), "-o", str(out_full)]
+    try:
+        subprocess.run(argv, check=True, cwd=str(repo_root()))
+    except subprocess.CalledProcessError as e:
+        msg = getattr(e, "stderr", b"")
+        try:
+            msg = msg.decode("utf-8", errors="ignore")
+        except Exception:
+            msg = str(msg)
+        log(f"[WARN] full-parse failed for {in_json}: {e}\n{msg}")
+
+
 # ---------- CLI ----------
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Decode → manifest → (optionally) emit SQL for initial import.")
@@ -422,6 +444,50 @@ def main() -> None:
                 sys.exit(2)
         else:
             log(f"[OK] Using existing manifest: {manifest_path}")
+
+        # (B2) Full-parse enriched outputs for UI (always; independent of SQL step)
+    try:
+        targets: List[Path] = []
+        if items:
+            # Use the just-built manifest items
+            for it in items:
+                try:
+                    targets.append(Path(it["out_json"]))
+                except Exception:
+                    continue
+        else:
+            # No new items in this run; load manifest to discover existing decoded JSONs
+            try:
+                with open(manifest_path, "r", encoding="utf-8", errors="ignore") as fh:
+                    mdoc = json.load(fh)
+                for it in mdoc.get("items", []):
+                    try:
+                        targets.append(Path(it["out_json"]))
+                    except Exception:
+                        continue
+            except Exception as e:
+                log(f"[WARN] Could not load manifest for full-parse enumeration: {e}")
+
+        # Deduplicate + run
+        seen: set[str] = set()
+        for j in targets:
+            try:
+                j_abs = str(j.resolve())
+            except Exception:
+                j_abs = str(j)
+            if j_abs in seen:
+                continue
+            seen.add(j_abs)
+
+            out_full = FULLPARSE_DIR / (Path(j).stem + ".full.json")
+            run_fullparse(Path(j), out_full)
+        if seen:
+            log(f"[OK] Full-parse completed for {len(seen)} JSON(s) into {FULLPARSE_DIR}")
+        else:
+            log("[INFO] No JSON targets found for full-parse.")
+    except Exception as e:
+        log(f"[WARN] Full-parse phase encountered an error: {e}")
+
 
     # (C) Delegate to DB importer unless suppressed
     if args.no_sql:

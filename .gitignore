@@ -80,3 +80,5 @@ output*
 .nmsinventory.scope.txt
 bundles/
 .venv-capture
+external/
+data/
