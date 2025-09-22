@@ -7,6 +7,8 @@
 #   scripts/jq_inventory_reports.sh pivot
 #   scripts/jq_inventory_reports.sh owner-category
 #   scripts/jq_inventory_reports.sh fields
+#   scripts/jq_inventory_reports.sh currencies
+#   scripts/jq_inventory_reports.sh items-top [N]
 
 set -euo pipefail
 JQ_BIN="${JQ:-jq}"
@@ -19,7 +21,6 @@ mode="${1:-table}"
 
 case "$mode" in
   table)
-    # Prints: file  category  containers  general  tech  cargo  total  g_%  t_%  c_%  total_per_container
     for f in output/fullparse/*.full.json; do
       F="$(basename "$f")"
       OUT="$("$JQ_BIN" --arg F "$F" -r '
@@ -54,13 +55,11 @@ case "$mode" in
     [ -n "${TARGET}" ] || die "delta mode requires TARGET json path"
     [ -f "${BASE}" ]   || die "BASE not found: ${BASE}"
     [ -f "${TARGET}" ] || die "TARGET not found: ${TARGET}"
-    # Use -s (slurp) for compatibility with jq builds lacking --argfile
     "$JQ_BIN" -s -r '
       def totmap(o):
         ((o._rollup? // {}).inventory? // {}).by_category? // {}
         | to_entries
         | map({(.key): (.value.total // 0)}) | add // {};
-
       .[0] as $A | .[1] as $B
       | (totmap($A)) as $base
       | (totmap($B)) as $curr
@@ -88,7 +87,6 @@ case "$mode" in
             cargo:   (.value.cargo   // 0)
           }})
         | add // {};
-
       .[0] as $A | .[1] as $B
       | (catmap($A)) as $base
       | (catmap($B)) as $curr
@@ -109,18 +107,14 @@ case "$mode" in
   ;;
 
   pivot)
-    # Wide matrix: categories as rows, each file as a column (totals).
-    # Reads every output/fullparse/*.full.json
     mapfile -t FILES < <(printf "%s\n" output/fullparse/*.full.json)
     [ "${#FILES[@]}" -gt 0 ] || die "No files in output/fullparse"
-    # Build JSON array of basenames for column header
     NAMES_JSON="$(printf "%s\n" "${FILES[@]}" | xargs -n1 basename | jq -R . | jq -s .)"
     "$JQ_BIN" -s --argjson NAMES "$NAMES_JSON" -r '
       def totmap(o):
         ((o._rollup? // {}).inventory? // {}).by_category? // {}
         | to_entries
         | map({(.key): (.value.total // 0)}) | add // {};
-
       . as $arr
       | ($arr | map(totmap(.))) as $maps
       | (reduce $maps[] as $m ({}; . + $m) | keys | sort) as $cats
@@ -132,7 +126,6 @@ case "$mode" in
   ;;
 
   owner-category)
-    # Emits: file  owner  category  total (only if by_owner_by_category exists)
     for f in output/fullparse/*.full.json; do
       F="$(basename "$f")"
       OUT="$("$JQ_BIN" -r '
@@ -152,7 +145,6 @@ case "$mode" in
   ;;
 
   fields)
-    # Shows which keys each category has, to guide more columns later.
     for f in output/fullparse/*.full.json; do
       F="$(basename "$f")"
       OUT="$("$JQ_BIN" -r '
@@ -169,6 +161,40 @@ case "$mode" in
     done
   ;;
 
+  currencies)
+    for f in output/fullparse/*.full.json; do
+      F="$(basename "$f")"
+      OUT="$("$JQ_BIN" -r '
+        (._rollup?.currencies? // {}) as $c
+        | [ "'"$F"'", ($c.Units // 0), ($c.Nanites // 0), ($c.Quicksilver // 0) ]
+        | @tsv
+      ' "$f")"
+      if [ -n "$OUT" ]; then
+        echo -e "file\tUnits\tNanites\tQuicksilver"
+        echo "$OUT"
+      fi
+    done
+  ;;
+
+  items-top)
+    N="${2:-25}"
+    for f in output/fullparse/*.full.json; do
+      F="$(basename "$f")"
+      OUT="$("$JQ_BIN" --argjson N "$N" -r '
+        (._rollup?.inventory?.top_items? // [])[:$N]
+        | to_entries[]?
+        | [ "'"$F"'", .value.code, (.value.count // 0) ]
+        | @tsv
+      ' "$f")"
+      if [ -n "$OUT" ]; then
+        echo "== $F (top $N)"
+        echo -e "file\tcode\tcount"
+        echo "$OUT"
+        echo
+      fi
+    done
+  ;;
+
   *)
     cat >&2 <<USAGE
 Usage:
@@ -178,6 +204,8 @@ Usage:
   $0 pivot
   $0 owner-category
   $0 fields
+  $0 currencies
+  $0 items-top [N]
 USAGE
     exit 2
   ;;
