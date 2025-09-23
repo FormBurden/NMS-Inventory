@@ -1,5 +1,23 @@
+-- === BEGIN FK- and view-safe reset header ===
+SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
+SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
+SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0;
+
+-- Drop dependent views first (most dependent → least)
+DROP VIEW IF EXISTS v_api_inventory_rows_active_combined;
+DROP VIEW IF EXISTS v_api_inventory_rows_active;
+DROP VIEW IF EXISTS v_api_inventory_rows_by_root;
+DROP VIEW IF EXISTS v_latest_snapshot_by_root;
+
+-- Drop tables (children before parents)
 DROP TABLE IF EXISTS nms_items;
+DROP TABLE IF EXISTS nms_ledger_deltas;
+DROP TABLE IF EXISTS nms_import_log;
+DROP TABLE IF EXISTS nms_save_roots;
+DROP TABLE IF EXISTS nms_settings;
 DROP TABLE IF EXISTS nms_snapshots;
+-- === END header ===
+
 
 CREATE TABLE nms_snapshots (
   snapshot_id     INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -32,3 +50,9 @@ CREATE TABLE nms_items (
   UNIQUE KEY uniq_slot_per_snapshot
     (snapshot_id, owner_type, inventory, container_id, slot_index)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- === BEGIN restore session settings ===
+SET SQL_NOTES=@OLD_SQL_NOTES;
+SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
+SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
+-- === END restore ===
+

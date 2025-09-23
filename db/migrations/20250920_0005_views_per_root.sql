@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS nms_save_roots (
 CREATE OR REPLACE VIEW v_api_inventory_rows_active AS
 SELECT r.save_root, a.resource_id, a.amount, a.item_type
 FROM nms_save_roots r
-JOIN v_api_inventory_rows_by_root a ON a.save_root = r.save_root
+JOIN v_api_inventory_rows_by_root a ON a.save_root COLLATE utf8mb4_unicode_ci = r.save_root COLLATE utf8mb4_unicode_ci
 WHERE r.is_active = 1;
 
 -- Combined (single total across active roots)
