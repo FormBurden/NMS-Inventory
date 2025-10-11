@@ -27,37 +27,52 @@ def _dedupe(seq: List[PathStr]) -> List[PathStr]:
         out.append(s); seen.add(s)
     return out
 
-def find_sections(obj: Json) -> Dict[str, List[PathStr]]:
-    """Heuristically discover big sections. Works better after key-renaming."""
-    idx: Dict[str, List[PathStr]] = {
-        "inventories": [],
-        "milestones": [],
-        "bases": [],
-        "teleporter_history": [],
-        "companions": [],
-        "difficulty": [],
-        "season_data": [],
-    }
-    # Season / difficulty by name
-    idx["season_data"]       = _find_all_by_key_contains(obj, ["SeasonData"], dict)
-    idx["difficulty"]        = _find_all_by_key_contains(obj, ["DifficultySetting", "DifficultyPreset"], dict)
-    # Milestones / bases / teleporter / companions by name
-    idx["milestones"]        = _find_all_by_key_contains(obj, ["Milestone", "Journey"], list)
-    idx["bases"]             = _find_all_by_key_contains(obj, ["Base", "Bases"], list)
-    idx["teleporter_history"]= _find_all_by_key_contains(obj, ["Teleport", "Teleporter"], list)
-    idx["companions"]        = _find_all_by_key_contains(obj, ["Companion", "Pet", "Creature"], list)
+def find_sections(data):
+    """
+    Build a lightweight index of interesting sections in the decoded JSON.
+    For inventories, we only record LEAF lists-of-dicts with plausible slot sizes (5..120),
+    never their parent dict path (avoids double-counting).
+    """
+    idx: Dict[str, List[str]] = {"inventories": []}
 
-    # Inventories by shape (fallback when keys are obfuscated)
-    for (path, val) in walk_with_path(obj):
-        if isinstance(val, dict):
-            for k, v in val.items():
+    def walk(obj: Any, path: List[Any]) -> None:
+        # Dict: record child list-of-dicts that look like slot arrays, then recurse
+        if isinstance(obj, dict):
+            for k, v in obj.items():
                 if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
-                    if 10 <= len(v) <= 250:
-                        idx["inventories"].append(path_to_string(path))
-                        break
-        elif isinstance(val, list):
-            if val and all(isinstance(x, dict) for x in val) and 10 <= len(val) <= 250:
-                idx["inventories"].append(path_to_string(path))
+                    n = len(v)
+                    if 5 <= n <= 120:
+                        idx["inventories"].append(path_to_string(path + [k]))
+            for k, v in obj.items():
+                walk(v, path + [k])
+            return
+
+        # List: record itself if it's a plausible slot array, then recurse into elements
+        if isinstance(obj, list):
+            if obj and all(isinstance(x, dict) for x in obj):
+                n = len(obj)
+                if 5 <= n <= 120:
+                    idx["inventories"].append(path_to_string(path))
+            for i, v in enumerate(obj):
+                walk(v, path + [i])
+            return
+
+        # Primitives: ignore
+        return
+
+    walk(data, [])
+
+    # Deduplicate while keeping order
+    seen = set()
+    dedup = []
+    for p in idx["inventories"]:
+        if p not in seen:
+            seen.add(p)
+            dedup.append(p)
+    idx["inventories"] = dedup
+    return idx
+
+
 
     for k in list(idx.keys()):
         idx[k] = _dedupe(idx[k])

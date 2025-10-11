@@ -15,7 +15,7 @@
   const ENDPOINTS = {
     catalogue: `${BASE}/api/item_meta.php`,
     inventory: `${BASE}/api/inventory.php`,
-    settings: "/api/settings.php",
+    settings: `${BASE}/api/settings.php`,
     items: `${BASE}/data/items_local.json`,
     icon: `${BASE}/api/icon.php`,
     placeholder: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
@@ -197,27 +197,7 @@
     }
   }
   
-    // Accept either { rows: [...] } or a raw array fallback
-    const rows = Array.isArray(payload?.rows) ? payload.rows : (Array.isArray(payload) ? payload : []);
 
-    state.rows = rows.map((row) => {
-      const rid = normalizeRID(row.resource_id || row.id || row.rid || "");
-      const meta = resolveMeta(rid);
-
-      const enriched = {
-        ...row,
-        resource_id: rid,
-        display_id: row.display_id || rid,
-        display_name: meta.name || row.display_name || rid,
-        type: (meta.kind || row.type || "").toString(),
-      };
-
-      enriched.icon_url = iconSrcFor(enriched);
-      return enriched;
-    });
-
-    render();
-  }
 
   // ---------- Settings ----------
   const DEFAULT_SETTINGS = {
@@ -309,7 +289,7 @@
     }
 
 
-
+  }
 
   if (els.tabs) {
     els.tabs.addEventListener("click", (ev) => {

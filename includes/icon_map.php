@@ -26,6 +26,26 @@ function nms_icon_candidates(string $resourceId, string $type = ''): array {
 
     // 3) Generic “NAME_Icon.png” is common across types
     $out[] = $base . rawurlencode($ridT . '_Icon.png'); // e.g. OXYGEN_Icon.png
+    // 3.1) Hash-normalized variants for procedurals like PROC_PLNT#17714
+    $ridHashless = preg_replace('/#.*/', '', $ridT);  // PROC_PLNT
+    $ridNoHash   = str_replace('#', '', $ridT);       // PROC_PLNT17714
+    $ridUnders   = str_replace('#', '_', $ridT);      // PROC_PLNT_17714
+
+    // Common wiki filename shapes
+    $out[] = $base . rawurlencode($ridHashless . '_Icon.png');
+    $out[] = $base . rawurlencode($ridNoHash   . '_Icon.png');
+    $out[] = $base . rawurlencode($ridUnders   . '_Icon.png');
+
+    if (strcasecmp($type, 'Product') === 0) {
+        $out[] = $base . 'PRODUCT.'   . rawurlencode($ridHashless) . '.png';
+        $out[] = $base . 'PRODUCT.'   . rawurlencode($ridNoHash)   . '.png';
+        $out[] = $base . 'PRODUCT.'   . rawurlencode($ridUnders)   . '.png';
+    } elseif (strcasecmp($type, 'Technology') === 0) {
+        $out[] = $base . 'TECHNOLOGY.' . rawurlencode($ridHashless) . '.png';
+        $out[] = $base . 'TECHNOLOGY.' . rawurlencode($ridNoHash)   . '.png';
+        $out[] = $base . 'TECHNOLOGY.' . rawurlencode($ridUnders)   . '.png';
+    }
+
 
     // 4) As a last resort, try the raw (with caret) “_Icon” shape
     $out[] = $base . rawurlencode($rid . '_Icon.png');  // e.g. ^AMMO_Icon.png

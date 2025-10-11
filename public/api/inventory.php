@@ -11,7 +11,7 @@ try {
     // UI scopes → canonical owner_type values in DB
     $SCOPE_TO_OWNERS = [
         'ship'      => ['SHIP'],
-        'character' => ['SUIT'],
+        'character' => ['SUIT','CHARACTER'],
         'storage'   => ['STORAGE'],
         'frigate'   => ['FRIGATE'],
         'vehicles'  => ['VEHICLE'],
@@ -76,6 +76,27 @@ try {
         $stmt = db()->query($fallbackSql);
         $rows = $stmt->fetchAll();
     }
+        // If the active-root view returned nothing, retry using the non-active view
+        if (!$rows || count($rows) === 0) {
+            $sql2 = "
+                SELECT
+                    resource_id,
+                    SUM(amount)     AS amount,
+                    MIN(item_type)  AS item_type
+                FROM v_api_inventory_rows
+                WHERE owner_type IN ($placeholders)
+                $invSql
+                GROUP BY resource_id
+                ORDER BY amount DESC
+                LIMIT $limit
+            ";
+            $stmt2 = db()->prepare($sql2);
+            $stmt2->execute($params);
+            $rows2 = $stmt2->fetchAll();
+            if ($rows2 && count($rows2) > 0) {
+                $rows = $rows2;
+            }
+        }
 
 
     echo json_encode(['ok' => true, 'rows' => $rows], JSON_UNESCAPED_SLASHES);

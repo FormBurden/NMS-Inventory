@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS nms_inventory_totals (
 -- Ledger deltas between two snapshots (what changed)
 CREATE TABLE IF NOT EXISTS nms_ledger_deltas (
   id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  from_snapshot_id   INT UNSIGNED    NOT NULL,
-  to_snapshot_id     INT UNSIGNED    NOT NULL,
+  from_snapshot_id   BIGINT UNSIGNED NOT NULL,
+  to_snapshot_id     BIGINT UNSIGNED NOT NULL,
   resource_id        VARCHAR(128)    NOT NULL,
   delta              BIGINT          NOT NULL,
   computed_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,

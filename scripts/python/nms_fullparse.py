@@ -67,6 +67,8 @@ def main():
 
     summary = build_summary(data, index)
     rollup = {"inventory": compute_inventory_rollup(data, index, inv_cats, inv_child_types)}
+    summary["inventory"]["containers"] = rollup["inventory"]["totals"]["containers"]
+    summary["inventory"]["total_slots"] = rollup["inventory"]["totals"]["total"]
     out = {"_meta": meta, "_index": index, "_summary": summary, "_rollup": rollup, **data} if isinstance(data, dict) else \
         {"_meta": meta, "_index": index, "_summary": summary, "_rollup": rollup, "data": data}
 

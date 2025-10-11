@@ -178,7 +178,7 @@ if (!$refresh) {
 
 // 1) Load item metadata for hints
 $items = load_json($ITEMS_PATH);
-$entry = is_array($items) ? ($items[$id] ?? null) : null;
+$entry = is_array($items) ? ($items[$id] ?? ($items[preg_replace('/#.*/', '', $id)] ?? null)) : null;
 if ($entry && !$type) {
     $type = (string)($entry['kind'] ?? $type);
 }

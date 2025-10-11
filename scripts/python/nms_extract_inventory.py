@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, json, sys, csv, hashlib
+import argparse, json, sys, csv, hashlib, os
 from collections import defaultdict, deque
 
 GOOD_TYPES = {"Substance", "Product"}
@@ -85,6 +85,7 @@ def main():
     totals = defaultdict(int)
     slots_rows = []
     container_owner = {}
+    auto_slot_counter = defaultdict(int)
 
 
     for path, parent, pkey, obj in walk(data):
@@ -172,6 +173,11 @@ def main():
                 if isinstance(seg, int):
                     slot_index = seg
                     break
+            # If slot_index is still None or negative, assign a stable per-container sequence
+            if slot_index is None or (isinstance(slot_index, int) and slot_index < 0):
+                auto_slot_counter[container] += 1
+                slot_index = auto_slot_counter[container]
+
             # --- begin: heuristic owner/inventory inference (NMS-Inventory) ---
             # Derive owner by path keywords if still unknown.
             pstr = ".".join(str(p) for p in path)  # ensure defined regardless of earlier branches
@@ -214,6 +220,14 @@ def main():
             if owner == "FREIGHTER":
                 owner = "FRIGATE"
             # --- end: heuristic owner/inventory inference (NMS-Inventory) ---
+            # Final fallback: if still UNKNOWN and looks like a personal inventory page, call it SUIT
+            if owner == "UNKNOWN" and inv == "GENERAL" and not _has(
+                "storage","storagecontainer","homebase",
+                "freighter","frigate","capitalship",
+                "ship","vehicle","exocraft","roamer","nomad","colossus","minotaur","nautilon"
+            ):
+                owner = "SUIT"
+
 
             slots_rows.append({
                 "owner_type": owner,
