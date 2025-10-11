@@ -22,9 +22,10 @@ JSON="$CACHE/${NMS_PROFILE}_${HG_BASE}.json"
 SLOTS="$OUTDIR/${NMS_PROFILE}_slots.csv"
 TOTALS="$OUTDIR/${NMS_PROFILE}_totals.csv"
 
-dbq() { MYSQL_PWD="$NMS_DB_PASS" mariadb --local-infile=1 \
+dbq() { MYSQL_PWD="$NMS_DB_PASS" mariadb \
   -h "$NMS_DB_HOST" -P "$NMS_DB_PORT" \
   -u "$NMS_DB_USER" -D "$NMS_DB_NAME" -N -B -e "$1"; }
+
 
 escape_sql() { printf "%s" "$1" | sed "s/'/''/g"; }
 
@@ -52,7 +53,7 @@ read -r LAST_ID LAST_SRC LAST_SHA <<<"$(dbq "
   ORDER BY snapshot_id DESC
   LIMIT 1;")" || true
 
-if [[ -n "${LAST_ID:-}" && "$LAST_SRC" == "$HG_MTIME" && "$LAST_SHA" == "$JSON_SHA" ]]; then
+if [[ -n "${LAST_ID:-}" && "$LAST_SRC" == "$HG_MTIME" && "$LAST_SHA" == "$JSON_SHA" && "${NMS_IMPORT_FORCE:-0}" != "1" ]]; then
   echo "[import] unchanged (mtime+sha match DB); skipping extract/import."
   exit 0
 fi

@@ -123,8 +123,7 @@ def main():
             if amt > 500 or (qh >= 5 or xj >= 2):
                 inv = "CARGO"
 
-        # owner inference: keep it simple & conservative — we can refine later
-                # owner inference: widen the search window and check segment membership
+        # owner inference: widen the search window and check segment membership
         owner = "UNKNOWN"
         # consider ALL string segments for exact membership checks
         segs = {str(p) for p in path if isinstance(p, str)}
@@ -151,10 +150,10 @@ def main():
                 owner = "STORAGE"
             elif ".8ZP." in pstr:
                 owner = "VEHICLE"
-            
 
+        if owner == "FREIGHTER":
+            owner = "FRIGATE"
 
-        if owner == "FREIGHTER": owner = "FRIGATE"
         container = path_signature(path)
         # Propagate known owner per container (stabilizes UNKNOWN bins)
         prev = container_owner.get(container)
@@ -162,6 +161,7 @@ def main():
             owner = prev
         elif owner != "UNKNOWN":
             container_owner[container] = owner
+
 
 
         totals[rid] += amt
@@ -187,7 +187,7 @@ def main():
                 return any(k in p_low for k in keys)
 
 
-            # Owner inference
+            # --- begin: heuristic owner/inventory inference (NMS-Inventory) ---
             if owner == "UNKNOWN":
                 if _has("suit", "playerinventory", "playerstate", "inventory.suit"):
                     owner = "SUIT"
@@ -200,33 +200,18 @@ def main():
                 elif _has("storage", "chest", "base", "homebase", "storagecontainer"):
                     owner = "STORAGE"
 
-            # Inventory type inference
-            # Prefer explicit slot hint when available
-            inv_hint = (dict_get(obj, "InventoryType", "") or "").upper()
-            if not inv_hint:
-                if _has("tech"):
-                    inv_hint = "TECHONLY"
-                elif _has("cargo"):
-                    inv_hint = "CARGO"
-
-            if inv_hint in ("TECH", "TECHNOLOGY"):
-                inv_hint = "TECHONLY"
-
-            if inv_hint in ("TECHONLY", "CARGO", "GENERAL"):
-                if inv == "GENERAL" and inv_hint != "GENERAL":
-                    inv = inv_hint
-
-            # Normalize freighter wording
             if owner == "FREIGHTER":
                 owner = "FRIGATE"
-            # --- end: heuristic owner/inventory inference (NMS-Inventory) ---
-            # Final fallback: if still UNKNOWN and looks like a personal inventory page, call it SUIT
+            # --- end ---
+
+            # Final fallback -> SUIT on personal pages
             if owner == "UNKNOWN" and inv == "GENERAL" and not _has(
                 "storage","storagecontainer","homebase",
                 "freighter","frigate","capitalship",
                 "ship","vehicle","exocraft","roamer","nomad","colossus","minotaur","nautilon"
             ):
                 owner = "SUIT"
+
 
 
             slots_rows.append({
