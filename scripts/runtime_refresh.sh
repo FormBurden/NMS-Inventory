@@ -12,8 +12,8 @@ if [[ -f .env ]]; then
 fi
 
 # Defaults (override via .env)
-NMS_DECODER="${NMS_DECODER:-/mnt/Unlimited-Gaming/Modding/No-Mans-Sky/NMS-Save-Decoder-main/nmssavetool.py}"
-DEFAULT_SAVES="/mnt/Unlimited-Gaming/SteamLibrary/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/Application Data/HelloGames/NMS/st_76561198065088580"
+NMS_DECODER="${NMS_DECODER:-$PROJECT_ROOT/scripts/python/nms_hg_decoder.py}"
+DEFAULT_SAVES="${NMS_SAVE_ROOT%/}/${NMS_PROFILE}"
 NMS_SAVES_DIRS="${NMS_SAVES_DIRS:-$DEFAULT_SAVES}"
 
 NMS_DB_NAME="${NMS_DB_NAME:-nms_database}"

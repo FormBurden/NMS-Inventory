@@ -282,7 +282,7 @@ Required:
   --from .nmsinventory-files.txt   File list to include (exact filename preferred).
 
 Options:
-  --no-defaults    Skip default includes (env mask, structure, outputs, migrations).
+  --no-defaults    Skip default includes (env mask, structure, lightweight outputs, migrations).
   --no-logs        Skip logs capture (skips logs/DEV selection).
   --decode-logs    Include decoder/import logs from .cache/** and decoded debug blobs.
   --no-network     Skip browser/probes capture.
@@ -507,16 +507,28 @@ run_probes_stdin() {
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    if [[ "$line" != *"$NMS_URL_PREFIX"* ]]; then
-      echo "[WARN] Skipping probe (wrong origin): $line" | tee -a "$outdir/probes/_probes.log"
-      continue
-    fi
-    i=$((i+1))
-    local rc=0
-    bash -lc "$line" >"$outdir/probes/${i}.body" 2>"$outdir/probes/${i}.stderr" || rc=$?
+  if [[ "$line" != *"$NMS_URL_PREFIX"* ]]; then
+    echo "[WARN] Skipping probe (wrong origin): $line" | tee -a "$outdir/probes/_probes.log"
+    continue
+  fi
+  i=$((i+1))
+  local rc=0
+  bash -lc "$line" >"$outdir/probes/${i}.body" 2>"$outdir/probes/${i}.stderr" || rc=$?
     if [[ "$line" == curl* ]]; then
-      bash -lc "${line/ -sS / -sSI }" >"$outdir/probes/${i}.headers" 2>>"$outdir/probes/${i}.stderr" || true
+      # Build a header-only variant that works whether the probe used -s or -sS (or neither).
+      header_line="$line"
+      # Prefer converting "-sS" → "-sSI"; otherwise try "-s" → "-sI"; finally append "-I" if absent.
+      if [[ "$header_line" == *" -sS "* ]]; then
+        header_line="${header_line/ -sS / -sSI }"
+      elif [[ "$header_line" == *" -s "* ]]; then
+        header_line="${header_line/ -s / -sI }"
+      fi
+      if [[ "$header_line" != *" -I"* && "$header_line" != *"-I "* && "$header_line" != *" -D "* ]]; then
+        header_line="$header_line -I"
+      fi
+      bash -lc "$header_line" >"$outdir/probes/${i}.headers" 2>>"$outdir/probes/${i}.stderr" || true
     fi
+
     printf '{"i":%d,"cmd":%s,"rc":%d,"t":"%s"}\n' \
       "$i" "$(printf '%s' "$line" | jq -Rs .)" "$rc" "$NOW_UTC" \
       >> "$outdir/probes/_probes.ndjson"
@@ -1089,10 +1101,11 @@ if [[ "$DO_DEFAULTS" -eq 1 ]]; then
     public/data/items_local.json \
     db/migrations \
     .cache/initial_import.log .cache/initial_import.sql \
-    output \
+    output/reports output/scan output/deepdebug output/*.csv \
   ; do
     [[ -e "$p" ]] && copy_rel "$p" "$TMP_WORK/defaults"
   done
+
 fi
 
 # -------- Manifest files (required) --------
@@ -1196,8 +1209,9 @@ if [[ "${DO_NETWORK:-1}" -eq 1 ]]; then
 
   # Probes (if provided)
   if [[ "${USE_PROBES_STDIN:-0}" -eq 1 ]]; then
-    run_probes_stdin "$TMP_WORK"
+    run_probes_stdin "$TMP_WORK/network"
   fi
+
 fi
 
 

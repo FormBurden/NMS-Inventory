@@ -13,11 +13,13 @@
   // ---------- Config ----------
   const BASE = (window.NMS_BASE || "/").replace(/\/+$/, "");
   const ENDPOINTS = {
-    catalogue: `${BASE}/api/catalogue.php`,
+    catalogue: `${BASE}/api/item_meta.php`,
     inventory: `${BASE}/api/inventory.php`,
     settings: "/api/settings.php",
     items: `${BASE}/data/items_local.json`,
-    icon: `${BASE}/api/icon.php`
+    icon: `${BASE}/api/icon.php`,
+    placeholder: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+
   };
 
 
@@ -68,16 +70,16 @@
       crossOrigin: "anonymous",
     });
 
-    // If CDN icon fails, try icon.php without type, then final placeholder
+    // If CDN/icon fails, try icon.php without type, then a final 1x1 placeholder
     img.addEventListener("error", () => {
       if (!img.dataset.fallback1) {
         img.dataset.fallback1 = "1";
-        img.src = (catalogue[rid]?.icon) || row.icon_url || `${ENDPOINTS.icon}?id=${encodeURIComponent(rid)}&type=${encodeURIComponent(String(row.type || ""))}`;
+        img.src = `${ENDPOINTS.icon}?id=${encodeURIComponent(String(r.resource_id || ""))}`;
       } else if (!img.dataset.fallback2) {
         img.dataset.fallback2 = "1";
         img.src = ENDPOINTS.placeholder;
       }
-    });
+    });  
 
     return el("div", { className: "card" }, [
       el("div", { className: "icon" }, [img]),
@@ -144,13 +146,12 @@
   async function loadCatalogue() {
     try {
       const qs = new URLSearchParams();
-      if (state?.scope) qs.set("scope", String(state.scope).toLowerCase());
-      if (els?.includeTech && els.includeTech.checked) qs.set("include_tech", "1");
-      const url = `${ENDPOINTS.inventory}${qs.toString() ? "?" + qs.toString() : ""}`;
-      const res = await fetch(url, { cache: "no-store" });
-
+      if (els.includeTech && els.includeTech.checked) qs.set("include_tech", "1");
+      // Load the entire local catalogue map (GAMEID -> {name, kind, icon, appId})
+      const res = await fetch(ENDPOINTS.items, { cache: "no-store" });
       if (!res.ok) throw new Error(`Failed to load ${ENDPOINTS.items}`);
       state.catalogue = await res.json();
+
     } catch (e) {
       console.warn("[inventory] items_local.json unavailable; names/icons may be raw IDs", e);
       state.catalogue = {};
@@ -158,13 +159,44 @@
   }
 
   async function loadInventory() {
-    const params = new URLSearchParams();
-    if (els.includeTech && els.includeTech.checked) params.set("include_tech", "1");
-    if (state.scope) params.set("scope", state.scope);
-    const url = `${ENDPOINTS.inventory}${params.toString() ? `?${params}` : ""}`;
-    const res = await fetch(url, { cache: "no-store" });
-    const payload = await res.json();
+    try {
+      const params = new URLSearchParams();
+      if (els.includeTech && els.includeTech.checked) params.set("include_tech", "1");
+      if (state.scope) params.set("scope", state.scope);
+      params.set("__nocache", String(Date.now()));
 
+      const url = `${ENDPOINTS.inventory}?${params}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Failed to load ${url} (${res.status})`);
+      const payload = await res.json();
+
+      // Accept either { rows: [...] } or a raw array fallback
+      const rows = Array.isArray(payload?.rows) ? payload.rows : (Array.isArray(payload) ? payload : []);
+
+      state.rows = rows.map((row) => {
+        const rid = normalizeRID(row.resource_id || row.id || row.rid || "");
+        const meta = resolveMeta(rid);
+
+        const enriched = {
+          ...row,
+          resource_id: rid,
+          display_id: row.display_id || rid,
+          display_name: meta.name || row.display_name || rid,
+          type: (meta.kind || row.type || "").toString(),
+        };
+
+        enriched.icon_url = iconSrcFor(enriched);
+        return enriched;
+      });
+
+      render();
+    } catch (e) {
+      console.warn("[inventory] loadInventory() failed", e);
+      // keep current UI; auto-refresh will retry
+      return;
+    }
+  }
+  
     // Accept either { rows: [...] } or a raw array fallback
     const rows = Array.isArray(payload?.rows) ? payload.rows : (Array.isArray(payload) ? payload : []);
 
@@ -265,14 +297,17 @@
     } catch { }
     setScope(initialScope);
 
-    // Data bootstrap
-    await loadCatalogue();
-    // Refresh once so display names/icons apply after catalogue loads
-    await loadInventory();
-
-    // Optional auto-refresh
+    // Data bootstrap (start auto-refresh early so a transient API error doesn't stall the UI)
+    try { await loadCatalogue(); } catch { }
     try { scheduleAutoRefresh(); } catch { }
-  }
+
+    // Kick off a first load but don't block boot on network/DB hiccups
+    try {
+      await loadInventory();
+    } catch (e) {
+      console.warn("[inventory] initial load failed; will retry via auto-refresh", e);
+    }
+
 
 
 

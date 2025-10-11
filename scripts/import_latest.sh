@@ -13,9 +13,12 @@ CACHE="${NMS_CACHE_DIR:-$REPO_ROOT/.cache/decoded}"
 OUTDIR="${NMS_OUT_DIR:-$REPO_ROOT/output}"
 mkdir -p "$CACHE" "$OUTDIR"
 
-HG="$NMS_SAVE_ROOT/$NMS_PROFILE/save2.hg"
-[[ -f "$HG" ]] || { echo "Missing save: $HG"; exit 2; }
-JSON="$CACHE/${NMS_PROFILE}_save2.hg.json"
+# Choose the newest save*.hg (handles save.hg vs save2.hg)
+HG_DIR="$NMS_SAVE_ROOT/$NMS_PROFILE"
+HG=$(ls -1t "$HG_DIR"/save*.hg 2>/dev/null | head -n1 || true)
+[[ -n "$HG" && -f "$HG" ]] || { echo "Missing save files in $HG_DIR (expected save*.hg)"; exit 2; }
+HG_BASE="$(basename "$HG")"
+JSON="$CACHE/${NMS_PROFILE}_${HG_BASE}.json"
 SLOTS="$OUTDIR/${NMS_PROFILE}_slots.csv"
 TOTALS="$OUTDIR/${NMS_PROFILE}_totals.csv"
 

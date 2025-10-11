@@ -50,6 +50,7 @@ try {
     }
     $merged = array_replace(DEFAULTS, $stored);
     json_out(['ok' => true, 'settings' => $merged]);
+    return;
   }
 
   if ($method === 'POST') {
@@ -78,6 +79,7 @@ try {
     $stmt->execute([':j' => $json]);
 
     json_out(['ok'=>true,'settings'=>$merged]);
+    return;
   }
 
   json_out(['ok'=>false,'error'=>'Method not allowed'], 405);

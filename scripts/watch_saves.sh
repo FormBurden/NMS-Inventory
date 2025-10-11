@@ -38,17 +38,18 @@ last_run=0
 
 while true; do
   # wake up on any activity under the profile dir
-  inotifywait -e close_write,modify,move,create "$PROFILE_DIR" >/dev/null 2>&1 || true
+  inotifywait -e close_write,modify,move,create,attrib "$PROFILE_DIR" >/dev/null 2>&1 || true
   [[ -f "$TARGET" ]] || continue
 
   now=$(date +%s)
   (( now - last_run < DEBOUNCE_SEC )) && continue
 
-  echo "[watch] change detected → import_latest.sh"
-  if ( cd "$REPO_ROOT" && ./scripts/import_latest.sh ); then
-    echo "[watch] import ok"
+  echo "[watch] change detected → runtime_refresh.sh"
+  if ( cd "$REPO_ROOT" && ./scripts/runtime_refresh.sh ); then
+    echo "[watch] refresh ok"
   else
-    echo "[watch] import failed"
+    echo "[watch] refresh failed"
   fi
+
   last_run=$now
 done

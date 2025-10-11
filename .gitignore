@@ -83,3 +83,4 @@ bundles/
 external/
 data/
 .env.redacted
+assets/img*

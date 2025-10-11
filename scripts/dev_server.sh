@@ -13,6 +13,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 2
 fi
 set -a; source "$ENV_FILE"; set +a
+: "${NMS_DECODER:=$REPO_ROOT/scripts/python/nms_hg_decoder.py}"
+: "${NMS_SAVES_DIRS:=${NMS_SAVE_ROOT%/}/${NMS_PROFILE}}"
 
 # Defaults / docroot / host:port
 HOST="${NMS_DEV_HOST:-localhost}"   # UX: we *print* localhost

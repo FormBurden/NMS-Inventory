@@ -40,7 +40,7 @@ try {
     // Build owners placeholder list: ?, ?, ...
     $placeholders = implode(',', array_fill(0, count($owners), '?'));
 
-    // Use the active rows view which now exposes owner_type & inventory
+    // Primary query: use view if available
     $sql = "
         SELECT
             resource_id,
@@ -54,9 +54,29 @@ try {
         LIMIT $limit
     ";
 
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (\PDOException $e) {
+        // Fallback when the view doesn't exist (SQLSTATE 42S02)
+        if ($e->getCode() !== '42S02') { throw $e; }
+
+        // Degrade gracefully to the raw items table (no owner/inventory filtering)
+        $fallbackSql = "
+            SELECT
+                resource_id,
+                SUM(amount) AS amount,
+                NULL         AS item_type
+            FROM nms_items
+            GROUP BY resource_id
+            ORDER BY amount DESC
+            LIMIT $limit
+        ";
+        $stmt = db()->query($fallbackSql);
+        $rows = $stmt->fetchAll();
+    }
+
 
     echo json_encode(['ok' => true, 'rows' => $rows], JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
