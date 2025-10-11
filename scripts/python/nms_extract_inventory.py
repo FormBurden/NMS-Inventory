@@ -174,10 +174,12 @@ def main():
                     break
             # --- begin: heuristic owner/inventory inference (NMS-Inventory) ---
             # Derive owner by path keywords if still unknown.
+            pstr = ".".join(str(p) for p in path)  # ensure defined regardless of earlier branches
             p_low = pstr.lower()
 
             def _has(*keys):
                 return any(k in p_low for k in keys)
+
 
             # Owner inference
             if owner == "UNKNOWN":
@@ -194,7 +196,7 @@ def main():
 
             # Inventory type inference
             # Prefer explicit slot hint when available
-            inv_hint = (slot.get("InventoryType") or "").upper() if isinstance(slot, dict) else ""
+            inv_hint = (dict_get(obj, "InventoryType", "") or "").upper()
             if not inv_hint:
                 if _has("tech"):
                     inv_hint = "TECHONLY"
@@ -205,8 +207,9 @@ def main():
                 inv_hint = "TECHONLY"
 
             if inv_hint in ("TECHONLY", "CARGO", "GENERAL"):
-                if inventory == "GENERAL" and inv_hint != "GENERAL":
-                    inventory = inv_hint
+                if inv == "GENERAL" and inv_hint != "GENERAL":
+                    inv = inv_hint
+
             # Normalize freighter wording
             if owner == "FREIGHTER":
                 owner = "FRIGATE"

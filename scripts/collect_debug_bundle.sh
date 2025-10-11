@@ -39,6 +39,13 @@ CHUNK_LINES_DEFAULT=300000
 CHUNK_CHARS_DEFAULT=500000
 CHUNK_LINES_BIG=750000
 CHUNK_CHARS_BIG=900000
+CHUNK_BYTES_DEFAULT=$((10*1024*1024))  # 10 MB default
+CHUNK_BYTES=$CHUNK_BYTES_DEFAULT
+PREFER_LINES=0
+
+JSON_FAST_MIN_BYTES=$((4*1024*1024))  # trigger fast path for .json ≥ 4 MiB
+JSON_FAST_MAX_BYTES="10m"              # per-output cap for split -C (line-preserving)
+
 
 
 MISSING_FILES=()
@@ -72,6 +79,191 @@ emit_stream_for_pack() {
   else
     cat
   fi
+}
+
+# ---- Chunked writers (split single files across parts by line/char/byte caps) ----
+
+_write_text_chunked() {
+  # $1=rel $2=abs $3=sha $4=size
+  local rel="$1" abs="$2" sha="$3" size="$4"
+  local first=1 seg=1
+  local hdr_lines hdr_chars need_bytes line_len b4_bytes
+
+  open_seg() {
+
+    # finalize part if writing header would breach byte cap
+    hdr_lines=8
+    hdr_chars=$(( 64 + ${#rel} + ${#sha} + 3 + ${#size} )) # rough header chars
+    b4_bytes=0
+    [[ -f "$pack_file" ]] && b4_bytes=$(wc -c < "$pack_file" | tr -d ' ')
+    if (( b4_bytes > 0 && b4_bytes + hdr_chars > CHUNK_BYTES )); then
+      local psha
+      psha="$(sha256sum "$pack_file" | awk '{print $1}')"
+      echo "$(basename "$pack_file")  $psha" >> "$sha_file"
+      pack_idx=$((pack_idx+1))
+      _new_pack
+    fi
+    {
+      if (( first )); then
+        echo "===== BEGIN FILE: $rel ====="
+      else
+        echo "===== BEGIN FILE: $rel (CONT $seg) ====="
+      fi
+      echo "SHA256: $sha"
+      echo "SIZE:   $size"
+      echo "ENCODING: raw"
+      echo
+    } >> "$pack_file"
+    PACK_LINES=$((PACK_LINES + hdr_lines))
+    PACK_CHARS=$((PACK_CHARS + hdr_chars))
+  }
+
+  close_seg() {
+    {
+      echo
+      echo "===== END FILE: $rel ====="
+      echo
+    } >> "$pack_file"
+    PACK_LINES=$((PACK_LINES + 3))
+    PACK_CHARS=$((PACK_CHARS + 3)) # minimal count for markers/newlines
+  }
+
+  open_seg
+  # IMPORTANT: process substitution keeps while in current shell (no subshell), so counters persist.
+  while IFS= read -r line; do
+    line_len=$(( ${#line} + 1 ))   # include newline
+    # roll if line would breach any cap (line/char/byte)
+    if (( PACK_LINES + 1 > CHUNK_LINES || PACK_CHARS + line_len > CHUNK_CHARS )); then
+      close_seg
+      local psha
+      psha="$(sha256sum "$pack_file" | awk '{print $1}')"
+      echo "$(basename "$pack_file")  $psha" >> "$sha_file"
+      pack_idx=$((pack_idx+1))
+      _new_pack
+      first=0; seg=$((seg+1))
+      open_seg
+    else
+      # also guard byte cap
+      need_bytes=$line_len
+      b4_bytes=0
+      [[ -f "$pack_file" ]] && b4_bytes=$(wc -c < "$pack_file" | tr -d ' ')
+      if (( b4_bytes + need_bytes > CHUNK_BYTES )); then
+        close_seg
+        local psha
+        psha="$(sha256sum "$pack_file" | awk '{print $1}')"
+        echo "$(basename "$pack_file")  $psha" >> "$sha_file"
+        pack_idx=$((pack_idx+1))
+        _new_pack
+        first=0; seg=$((seg+1))
+        open_seg
+      fi
+    fi
+    printf '%s\n' "$line" >> "$pack_file"
+    PACK_LINES=$((PACK_LINES + 1))
+    PACK_CHARS=$((PACK_CHARS + line_len))
+  done < <(emit_stream_for_pack "$rel" < "$abs")
+
+  close_seg
+}
+
+_write_b64_chunked() {
+  # $1=rel $2=abs $3=sha $4=size
+  local rel="$1" abs="$2" sha="$3" size="$4"
+  local first=1 seg=1
+  local hdr_lines hdr_chars chunk_len rest len b4_bytes
+  # We'll write base64 in fixed-size slices that respect both char and byte caps.
+
+  open_seg() {
+
+    hdr_lines=8
+    hdr_chars=$(( 64 + ${#rel} + ${#sha} + 6 + ${#size} ))
+    b4_bytes=0
+    [[ -f "$pack_file" ]] && b4_bytes=$(wc -c < "$pack_file" | tr -d ' ')
+    if (( b4_bytes > 0 && b4_bytes + hdr_chars > CHUNK_BYTES )); then
+      local psha
+      psha="$(sha256sum "$pack_file" | awk '{print $1}')"
+      echo "$(basename "$pack_file")  $psha" >> "$sha_file"
+      pack_idx=$((pack_idx+1))
+      _new_pack
+    fi
+    {
+      if (( first )); then
+        echo "===== BEGIN FILE: $rel ====="
+      else
+        echo "===== BEGIN FILE: $rel (CONT $seg) ====="
+      fi
+      echo "SHA256: $sha"
+      echo "SIZE:   $size"
+      echo "ENCODING: base64"
+      echo
+    } >> "$pack_file"
+    PACK_LINES=$((PACK_LINES + hdr_lines))
+    PACK_CHARS=$((PACK_CHARS + hdr_chars))
+  }
+
+  close_seg() {
+
+    {
+      echo
+      echo "===== END FILE: $rel ====="
+      echo
+    } >> "$pack_file"
+    PACK_LINES=$((PACK_LINES + 3))
+    PACK_CHARS=$((PACK_CHARS + 3))
+  }
+
+  # Max safe chars we can write before tripping caps in this segment
+  local max_seg_chars
+  # leave some breathing room for END/footer
+  local reserve=256
+
+  open_seg
+  # single-line base64
+  local b64
+  b64="$(base64 -w 0 < "$abs")"
+  len=${#b64}
+  local pos=0
+
+  while (( pos < len )); do
+    # recompute segment allowance each loop
+    max_seg_chars=$(( CHUNK_CHARS - PACK_CHARS - reserve ))
+    if (( max_seg_chars <= 0 )); then
+      close_seg
+      local psha
+      psha="$(sha256sum "$pack_file" | awk '{print $1}')"
+      echo "$(basename "$pack_file")  $psha" >> "$sha_file"
+      pack_idx=$((pack_idx+1))
+      _new_pack
+      first=0; seg=$((seg+1))
+      open_seg
+      max_seg_chars=$(( CHUNK_CHARS - PACK_CHARS - reserve ))
+    fi
+
+    chunk_len=$(( len - pos ))
+    if (( chunk_len > max_seg_chars )); then
+      chunk_len=$max_seg_chars
+    fi
+    # byte cap guard
+    b4_bytes=0
+    [[ -f "$pack_file" ]] && b4_bytes=$(wc -c < "$pack_file" | tr -d ' ')
+    if (( b4_bytes + chunk_len > CHUNK_BYTES )); then
+      close_seg
+      local psha
+      psha="$(sha256sum "$pack_file" | awk '{print $1}')"
+      echo "$(basename "$pack_file")  $psha" >> "$sha_file"
+      pack_idx=$((pack_idx+1))
+      _new_pack
+      first=0; seg=$((seg+1))
+      open_seg
+    fi
+
+    printf '%s\n' "${b64:pos:chunk_len}" >> "$pack_file"
+    PACK_LINES=$((PACK_LINES + 1))
+    PACK_CHARS=$((PACK_CHARS + chunk_len + 1))
+    pos=$((pos + chunk_len))
+  done
+
+  close_seg
 }
 
 
@@ -577,19 +769,23 @@ pack_bundle() {
   PACK_DIR="${BUNDLE_DIR}/ap"
   mkdir -p "$PACK_DIR"
 
-  echo "[*] Creating assistant pack: ${NAME}/ap (10MB chunks)"
-
+  echo "[*] Creating assistant pack: ${NAME}/ap ($((CHUNK_BYTES/1024/1024))MB chunks)"
   # Ensure the staged workspace is fully redacted before packaging
   final_redact_pass "$TMP_WORK"
   if [[ "${DO_NETWORK:-1}" -eq 1 ]]; then
     [[ -d "$TMP_WORK/network" ]] || emit_network_scaffold "$TMP_WORK"
   fi
 
-    local CHUNK_BYTES=$((10*1024*1024))  # 10 MB per pack file
+    local CHUNK_BYTES=$((50*1024*1024)) # 10 MB per pack file
   local CHUNK_LINES CHUNK_CHARS
   if [[ "${BIG_CHUNKS:-0}" -eq 1 ]]; then
     CHUNK_LINES=750000
     CHUNK_CHARS=900000
+    # If caller prefers line target, set an effectively "infinite" char cap
+    if [[ "${PREFER_LINES:-0}" -eq 1 ]]; then
+      CHUNK_CHARS=1000000000
+    fi
+    echo "[*] Creating assistant pack: ${NAME}/ap ($((CHUNK_BYTES/1024/1024))MB chunks)"
   else
     CHUNK_LINES=300000
     CHUNK_CHARS=500000
@@ -679,11 +875,45 @@ pack_bundle() {
     size="$(wc -c < "$abs" | tr -d ' ')"
     sha="$(sha256sum "$abs" | awk '{print $1}')"
 
+        # ---- FAST PATH for huge JSON (≥ 4 MiB): one-pass, line-preserving byte split to ~10 MB parts
+    if [[ "${rel,,}" == *.json && "$size" -ge "$JSON_FAST_MIN_BYTES" ]]; then
+      base="$(basename "$rel")"
+      prefix="$PACK_DIR/${base}.part-"
+
+      # Stream once: number lines (6-digit + TAB), then split by ~10 MB while preserving whole lines
+      LC_ALL=C nl -ba -w6 -s $'\t' "$abs" \
+        | split -d -a 4 -C "$JSON_FAST_MAX_BYTES" - --additional-suffix=.txt "$prefix"
+
+      # For each produced part: record sha, per-part counts, index rows, and accumulate totals
+      shopt -s nullglob
+      for pf in "${prefix}"*.txt; do
+        psha="$(sha256sum "$pf" | awk '{print $1}')"
+        echo "$(basename "$pf")  $psha" >> "$sha_file"
+
+        plines="$(wc -l < "$pf" | tr -d ' ')"
+        pchars="$(wc -c < "$pf" | tr -d ' ')"
+
+        TOTAL_LINES=$((TOTAL_LINES + plines))
+        TOTAL_CHARS=$((TOTAL_CHARS + pchars))
+
+        printf "  - path: %s (fast-split)\n    size: %s\n    sha256: %s\n    encoding: raw\n    lines: %s\n    chars: %s\n    pack: %s\n" \
+          "$rel" "$size" "$psha" "$plines" "$pchars" "$(basename "$pf")" >> "$index_file"
+      done
+      shopt -u nullglob
+
+      # Skip normal packer for this file
+      continue
+    fi
+
+
     if is_text_file "$abs"; then
             encoding="raw"
       # Counts after numbering (exactly what will be written)
-      lc="$(emit_stream_for_pack "$rel" < "$abs" | wc -l | tr -d ' ')"
-      cc="$(emit_stream_for_pack "$rel" < "$abs" | wc -c | tr -d ' ')"
+      # Faster counts without re-numbering: raw counts + 7 bytes/line for "000000<TAB>"
+      lc="$(wc -l < "$abs" | tr -d ' ')"
+      cc_raw="$(wc -c < "$abs" | tr -d ' ')"
+      cc=$(( cc_raw + lc * 7 ))
+
       approx=$(( cc + 256 ))  # header/footer overhead
       # compute additions for counters/index (text case)
       f_lines="$lc"
@@ -697,23 +927,10 @@ pack_bundle() {
       _ensure_room_for_text "$lc" "$cc" "$approx"
       _ensure_room_for "$approx"
 
-      {
-        echo "===== BEGIN FILE: $rel ====="
-        echo "SHA256: $sha"
-        echo "SIZE:   $size"
-        echo "ENCODING: $encoding"
-        echo
-        emit_stream_for_pack "$rel" < "$abs"
-        echo
-        echo "===== END FILE: $rel ====="
-        echo
-      } >> "$pack_file"
-
-      # Update running tallies for this part and overall (text only)
-      PACK_LINES=$((PACK_LINES + lc))
-      PACK_CHARS=$((PACK_CHARS + cc))
+      _write_text_chunked "$rel" "$abs" "$sha" "$size"
       TOTAL_LINES=$((TOTAL_LINES + lc))
       TOTAL_CHARS=$((TOTAL_CHARS + cc))
+
 
     else
       encoding="base64"
@@ -728,20 +945,10 @@ pack_bundle() {
       _ensure_room_for_text "$f_lines" "$f_chars" "$approx"
       _ensure_room_for "$approx"
 
-      {
-        echo "===== BEGIN FILE: $rel ====="
-        echo "SHA256: $sha"
-        echo "SIZE:   $size"
-        echo "ENCODING: $encoding"
-        echo
-        base64 -w 0 "$abs"
-        echo
-        echo "===== END FILE: $rel ====="
-        echo
-      } >> "$pack_file"
-            # update overall totals (base64 case)
+      _write_b64_chunked "$rel" "$abs" "$sha" "$size"
       TOTAL_LINES=$((TOTAL_LINES + f_lines))
       TOTAL_CHARS=$((TOTAL_CHARS + f_chars))
+
 
     fi
 
@@ -762,7 +969,7 @@ pack_bundle() {
 
     # Compute totals into the index header placeholders
   local TOTAL_PARTS
-  TOTAL_PARTS="$(ls -1 "$PACK_DIR"/"${NAME}.part-"*.txt 2>/dev/null | wc -l | tr -d ' ')"
+    TOTAL_PARTS="$(ls -1 "$PACK_DIR"/*'.part-'*.txt 2>/dev/null | wc -l | tr -d ' ')"
 
   sed -i \
     -e "s/__CHUNK_LINES__/${CHUNK_LINES}/" \
@@ -839,6 +1046,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --big-chunks) BIG_CHUNKS=1; shift;;
+    --prefer-lines) PREFER_LINES=1; shift;;
     -h|--help) usage; exit 0;;
 
     *) die "Unknown arg: $1";;

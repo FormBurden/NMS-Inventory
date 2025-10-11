@@ -280,7 +280,7 @@ def parse_args() -> argparse.Namespace:
 # ---------- manifest ----------
 def write_manifest(items: List[Dict[str, Any]], manifest_path: Path, cutoff_ts: float | None, recent_only: bool, decoder_used: str) -> None:
     doc = {
-        "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "cutoff": (None if cutoff_ts is None else iso_file_ts(cutoff_ts)),
         "recent_only": recent_only,
         "items": items,

@@ -82,3 +82,4 @@ bundles/
 .venv-capture
 external/
 data/
+.env.redacted

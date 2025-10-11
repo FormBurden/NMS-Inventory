@@ -123,7 +123,7 @@ if [[ -f "$IMPORTER" && $run_importer -eq 1 ]]; then
       python3 "$IMPORTER" --decode \
         ${NMS_DECODER:+--decoder "$NMS_DECODER"} \
         ${NMS_SAVES_DIRS:+--saves-dirs "$NMS_SAVES_DIRS"} \
-      | mariadb --local-infile=1 \
+      | sed '/^\[/d' | mariadb --local-infile=1 \
           -h "${NMS_DB_HOST:-localhost}" \
           -P "${NMS_DB_PORT:-3306}" \
           -u "${NMS_DB_USER:-root}" \
@@ -134,7 +134,7 @@ if [[ -f "$IMPORTER" && $run_importer -eq 1 ]]; then
     python3 "$IMPORTER" --decode \
       ${NMS_DECODER:+--decoder "$NMS_DECODER"} \
       ${NMS_SAVES_DIRS:+--saves-dirs "$NMS_SAVES_DIRS"} \
-    | mariadb --local-infile=1 \
+    | sed '/^\[/d' | mariadb --local-infile=1 \
         -h "${NMS_DB_HOST:-localhost}" \
         -P "${NMS_DB_PORT:-3306}" \
         -u "${NMS_DB_USER:-root}" \

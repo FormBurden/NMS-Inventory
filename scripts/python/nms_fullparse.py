@@ -72,7 +72,7 @@ def main():
 
     ensure_dir(args.out)
     save_json(args.out, out, pretty=True)
-    print(f"[ok] wrote {args.out}")
+    print(f"[ok] wrote {args.out}", file=sys.stderr)
 
 if __name__ == '__main__':
     main()
