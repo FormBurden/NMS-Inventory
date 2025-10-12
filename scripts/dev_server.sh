@@ -76,6 +76,11 @@ echo "[dev] logs → $RUN_DIR"
 # ────────────────────────────────────────────────────────────────────────────────
 # Preflight: decoder + .fingerprint rule, then importer (only when needed)
 # ────────────────────────────────────────────────────────────────────────────────
+(
+  # [fix] Run preflight decode/import in the background so the UI stays live.
+  # Route all output into the EDTB logger pipe.
+  exec >"$PIPE" 2>&1
+
 echo "[dev] preflight refresh (decode/import if needed)"
 
 # Paths used for the fingerprint rule (matches your earlier working flow)
@@ -159,6 +164,9 @@ if [[ -f "$IMPORTER" && $run_importer -eq 1 ]]; then
 else
   echo "[runtime] Import skipped (unchanged fingerprint or importer missing)"
 fi
+) & 
+PRE_PID=$!
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Watcher (unchanged) — pipe output into logger
@@ -204,6 +212,7 @@ trap '
   # stop children in order
   [[ -n "${WATCH_PID:-}" ]] && kill "$WATCH_PID" 2>/dev/null || true
   [[ -n "${SERVER_PID:-}" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  [[ -n "${PRE_PID:-}" ]] && kill "$PRE_PID" 2>/dev/null || true
   [[ -n "${LOGGER_PID:-}" ]] && kill "$LOGGER_PID" 2>/dev/null || true
 
   # remove fifo before moving logs

@@ -33,14 +33,34 @@ $CACHE_DIR   = realpath(__DIR__ . '/../../cache/icons') ?: (__DIR__ . '/../../ca
 // -------- helpers --------
 function send_png_headers(int $maxAge = 86400): void {
     header('Content-Type: image/png');
-    header('Cache-Control: public, max-age=' . $maxAge);
+    $cc = 'public, max-age=' . $maxAge;
+    if ($maxAge >= 86400) $cc .= ', immutable';
+    header('Cache-Control: ' . $cc);
 }
 
+
 function serve_file_and_exit(string $path, int $maxAge = 604800): void {
+    $mtime = @filemtime($path) ?: time();
+    $size  = @filesize($path) ?: 0;
+    $etag  = '"' . md5($path . '|' . $mtime . '|' . $size) . '"';
+
+    // Conditional GET short-circuit
+    if ((isset($_SERVER['HTTP_IF_NONE_MATCH']) && trim($_SERVER['HTTP_IF_NONE_MATCH']) === $etag) ||
+        (isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) && @strtotime($_SERVER['HTTP_IF_MODIFIED_SINCE']) >= $mtime)) {
+        send_png_headers($maxAge);
+        header('ETag: ' . $etag);
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
+        header('HTTP/1.1 304 Not Modified');
+        exit;
+    }
+
     send_png_headers($maxAge);
+    header('ETag: ' . $etag);
+    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
     readfile($path);
     exit;
 }
+
 
 function serve_placeholder_and_exit(string $ph): void {
     $full = $_SERVER['DOCUMENT_ROOT'] . $ph; // public/assets/img/placeholder.png

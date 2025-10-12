@@ -19,8 +19,10 @@
     items: `${BASE}/data/items_local.json`,
     icon: `${BASE}/api/icon.php`,
     placeholder: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
-
+    
   };
+  const EAGER_IMG_COUNT = 12; // first N icons render eager + high priority
+
 
 
 
@@ -62,13 +64,14 @@
   }
 
   // ---------- Rendering ----------
-  function cardRow(r) {
+  function cardRow(r, eager = false) {
     const img = el("img", {
       src: r.icon_url,
       alt: r.display_name || r.resource_id,
-      loading: "lazy",
+      loading: eager ? "eager" : "lazy",
       crossOrigin: "anonymous",
     });
+    if (eager) img.setAttribute("fetchpriority", "high");
 
     // If CDN/icon fails, try icon.php without type, then a final 1x1 placeholder
     img.addEventListener("error", () => {
@@ -79,20 +82,13 @@
         img.dataset.fallback2 = "1";
         img.src = ENDPOINTS.placeholder;
       }
-    });  
+    });
 
     return el("div", { className: "card" }, [
       el("div", { className: "icon" }, [img]),
       el("div", { className: "meta" }, [
-        el("div", {
-          className: "rid",
-          title: r.display_name || r.resource_id,
-          textContent: r.display_name || r.resource_id,
-        }),
-        el("div", {
-          className: "amt",
-          textContent: Number(r.amount || 0).toLocaleString(),
-        }),
+        el("div", { className: "rid", title: r.display_name || r.resource_id, textContent: r.display_name || r.resource_id }),
+        el("div", { className: "amt", textContent: Number(r.amount || 0).toLocaleString() }),
       ]),
     ]);
   }
@@ -122,7 +118,7 @@
       String(x.display_name || x.resource_id).localeCompare(String(y.display_name || y.resource_id))
     );
 
-    for (const r of rows) els.grid.appendChild(cardRow(r));
+    rows.forEach((r, i) => els.grid.appendChild(cardRow(r, i < EAGER_IMG_COUNT)));
   }
   // ---------- Scope / Tabs ----------
   function setScope(scope) {
@@ -205,7 +201,7 @@
     defaultWindow: "Character",
     iconSize: "medium",          // small | medium | large
     showNegatives: true,         // show negative rows in Inventory
-    autoRefreshSec: 15,          // 0 (off), 5, 15, 60, ...
+    autoRefreshSec: 10,          // 0 (off), 5, 15, 60, ...
     theme: "system",             // light | dark | system
   };
   let settings = { ...DEFAULT_SETTINGS };
