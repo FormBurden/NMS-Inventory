@@ -77,94 +77,16 @@ echo "[dev] logs → $RUN_DIR"
 # Preflight: decoder + .fingerprint rule, then importer (only when needed)
 # ────────────────────────────────────────────────────────────────────────────────
 (
-  # [fix] Run preflight decode/import in the background so the UI stays live.
-  # Route all output into the EDTB logger pipe.
+  # Preflight: use the unified runtime refresh (folder-based .fingerprint)
   exec >"$PIPE" 2>&1
-
-echo "[dev] preflight refresh (decode/import if needed)"
-
-# Paths used for the fingerprint rule (matches your earlier working flow)
-# SAVE2.hg is expected under $NMS_SAVE_ROOT/$NMS_PROFILE/
-HG_SAVE2="${NMS_SAVE_ROOT:-}/$(basename "${NMS_PROFILE:-}")/save2.hg"
-JSON_SAVE2="$REPO_ROOT/.cache/decoded/save2.json"
-FP_FILE="$REPO_ROOT/.cache/decoded/.fingerprint"
-
-need_decode=0
-if [[ -n "${NMS_SAVE_ROOT:-}" && -n "${NMS_PROFILE:-}" && -f "$HG_SAVE2" ]]; then
-  mkdir -p "$REPO_ROOT/.cache/decoded"
-  if [[ ! -f "$JSON_SAVE2" ]]; then
-    need_decode=1
-  elif [[ "$HG_SAVE2" -nt "$JSON_SAVE2" ]]; then
-    need_decode=1
-  fi
-else
-  # If we cannot resolve the save path, we skip local decode decision and let importer handle it.
-  need_decode=0
-fi
-
-# Compute current fingerprint if we have both files
-cur_fp=""
-if [[ -f "$HG_SAVE2" && -f "$JSON_SAVE2" ]]; then
-  hg_mtime="$(date -d "@$(stat -c %Y "$HG_SAVE2")" '+%F %T')" || hg_mtime=""
-  json_sha="$(sha256sum "$JSON_SAVE2" | awk '{print $1}')" || json_sha=""
-  cur_fp="${hg_mtime}|${json_sha}"
-fi
-
-# Decide if importer should run
-run_importer=0
-if [[ $need_decode -eq 1 ]]; then
-  run_importer=1
-elif [[ -n "$cur_fp" && -f "$FP_FILE" ]]; then
-  if [[ "$(<"$FP_FILE")" != "$cur_fp" ]]; then
-    run_importer=1
-  fi
-fi
-
-IMPORTER="$REPO_ROOT/scripts/python/nms_import_initial.py"
-if [[ -f "$IMPORTER" && $run_importer -eq 1 ]]; then
-  # Run importer (non-fatal). If NMS_DB_PASS is set, export to MYSQL_PWD for the pipeline.
-  set +e
-  if [[ -n "${NMS_DB_PASS:-}" ]]; then
-    (
-      export MYSQL_PWD="$NMS_DB_PASS"
-      python3 "$IMPORTER" --decode \
-        ${NMS_DECODER:+--decoder "$NMS_DECODER"} \
-        ${NMS_SAVES_DIRS:+--saves-dirs "$NMS_SAVES_DIRS"} \
-      | sed '/^\[/d' | mariadb --local-infile=1 \
-          -h "${NMS_DB_HOST:-localhost}" \
-          -P "${NMS_DB_PORT:-3306}" \
-          -u "${NMS_DB_USER:-root}" \
-          -D "${NMS_DB_NAME:-nms_database}"
-    ) >"$PIPE" 2>&1
-    st=$?
+  echo "[dev] preflight refresh via runtime_refresh.sh"
+  if ( cd "$REPO_ROOT" && ./scripts/runtime_refresh.sh ); then
+    echo "[dev] preflight refresh ok"
   else
-    python3 "$IMPORTER" --decode \
-      ${NMS_DECODER:+--decoder "$NMS_DECODER"} \
-      ${NMS_SAVES_DIRS:+--saves-dirs "$NMS_SAVES_DIRS"} \
-    | sed '/^\[/d' | mariadb --local-infile=1 \
-        -h "${NMS_DB_HOST:-localhost}" \
-        -P "${NMS_DB_PORT:-3306}" \
-        -u "${NMS_DB_USER:-root}" \
-        -D "${NMS_DB_NAME:-nms_database}" \
-        -p
-    st=$?
+    echo "[dev] WARN: runtime_refresh failed; continuing to start server."
   fi
-  set -e
-  if [[ ${st:-0} -ne 0 ]]; then
-    echo "[warn] Import failed (exit ${st}). Continuing to start server."
-  else
-    echo "[runtime] Done."
-    # Refresh JSON + write fingerprint when available
-    if [[ -f "$HG_SAVE2" && -f "$JSON_SAVE2" ]]; then
-      hg_mtime="$(date -d "@$(stat -c %Y "$HG_SAVE2")" '+%F %T')" || true
-      json_sha="$(sha256sum "$JSON_SAVE2" | awk '{print $1}')" || true
-      echo "${hg_mtime}|${json_sha}" > "$FP_FILE"
-    fi
-  fi
-else
-  echo "[runtime] Import skipped (unchanged fingerprint or importer missing)"
-fi
-) & 
+) &
+
 PRE_PID=$!
 
 
