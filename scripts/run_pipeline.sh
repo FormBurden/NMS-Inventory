@@ -60,7 +60,7 @@ clean_json="$CLEAN/${out_name%.json}.clean.json"
 
 # --- decode ---------------------------------------------------------------
 echo "[PIPE] decoding -> $raw_json"
-python3 "$ROOT/scripts/python/nms_hg_decoder.py" \
+python3 "$ROOT/scripts/python/pipeline/nms_hg_decoder.py" \
   --in "$NMS_HG_PATH" --out "$raw_json" --pretty \
   >"$LOGS/hg_decode.$stamp.log" 2>&1
 
@@ -72,13 +72,13 @@ fi
 
 # --- clean ----------------------------------------------------------------
 echo "[PIPE] cleaning -> $clean_json"
-python3 "$ROOT/scripts/python/nms_decode_clean.py" \
+python3 "$ROOT/scripts/python/pipeline/nms_decode_clean.py" \
   --json "$raw_json" --out "$clean_json" --overwrite \
   >"$LOGS/nms_decode_clean.$stamp.log" 2>&1
 
 # --- manifest (for runtime throttle/visibility) ---------------------------
 SRC_MTIME="$(stat -c %Y "$NMS_HG_PATH" 2>/dev/null || stat -f %m "$NMS_HG_PATH" 2>/dev/null || echo "")"
-python3 "$ROOT/scripts/python/build_manifest.py" \
+python3 "$ROOT/scripts/python/pipeline/build_manifest.py" \
   --source "$NMS_HG_PATH" \
   --source-mtime "$SRC_MTIME" \
   --decoded "$raw_json" \
@@ -98,14 +98,14 @@ DB_SHIM="$ROOT/.env.dbshim"
 
 # --- DB imports -----------------------------------------------------------
 echo "[PIPE] initial import into DB ($INITIAL_TABLE)"
-python3 "$ROOT/scripts/python/nms_resource_ledger_v3.py" --initial \
+python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" --initial \
   --saves "$clean_json" \
   --db-import --db-env "$DB_SHIM" --db-table "$INITIAL_TABLE" \
   ${USE_MTIME:+--use-mtime} \
   >"$LOGS/initial_import.$stamp.log" 2>&1
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
-python3 "$ROOT/scripts/python/nms_resource_ledger_v3.py" \
+python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
   --saves "$clean_json" \
   --baseline-db-table "$INITIAL_TABLE" \
   --baseline-snapshot latest \

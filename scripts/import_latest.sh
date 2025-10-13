@@ -36,7 +36,7 @@ elif [[ "$HG" -nt "$JSON" ]]; then NEED_DECODE=1
 fi
 DEC_FLAGS=$([ "${NMS_DECODER_DEBUG:-0}" = "1" ] && echo "--debug" || echo "")
 if [[ $NEED_DECODE -eq 1 ]]; then
-  python3 "$REPO_ROOT/scripts/python/nms_hg_decoder.py" --in "$HG" --out "$JSON" --pretty $DEC_FLAGS
+  python3 "$REPO_ROOT/scripts/python/pipeline/nms_hg_decoder.py" --in "$HG" --out "$JSON" --pretty $DEC_FLAGS
 fi
 
 # Fingerprint

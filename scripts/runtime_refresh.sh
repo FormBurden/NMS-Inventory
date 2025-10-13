@@ -55,67 +55,31 @@ run_pipeline() {
 INV_FP_CAND="" INV_FP_BASE="" INV_FP_MTIME="" INV_FP_SAVEID=""
 read_invfp() {
   # Expect scripts/python/inventory_fingerprint.py --latest (JSON or plain line)
-  local raw; raw="$(python3 scripts/python/inventory_fingerprint.py --latest 2>/dev/null || true)"
-  mapfile -t out < <( INV_JSON="$raw" python3 - <<'PY' 2>/dev/null || true
-import json, os, re, sys
-raw=os.environ.get("INV_JSON","") or ""
-fp=base=mtime=saveid=""
-try:
-    j=json.loads(raw) if raw else {}
-    fp=str(j.get("inv_fp","")); base=str(j.get("base",""))
-    mtime=str(j.get("mtime","")); saveid=str(j.get("saveid",""))
-except Exception:
-    if raw and "\n" not in raw and "{" not in raw:
-        fp=raw.strip()
-if not saveid and base:
-    m=re.search(r"(st_[0-9]+)", base)
-    if m: saveid=m.group(1)
-print(fp); print(base); print(mtime); print(saveid)
-PY
-  )
+  local raw; raw="$(python3 scripts/python/runtime/inventory_fingerprint.py --latest 2>/dev/null || true)"
+  mapfile -t out < <( printf '%s' "$raw" | python3 scripts/python/runtime/invfp_to_fields.py )
+
   if [[ ${#out[@]} -ge 4 ]]; then
     INV_FP_CAND="${out[0]}"; INV_FP_BASE="${out[1]}"; INV_FP_MTIME="${out[2]}"; INV_FP_SAVEID="${out[3]}"
   fi
   [[ -n "$INV_FP_SAVEID" ]] || INV_FP_SAVEID="default"
 }
-prev_invfp() { local c="${INV_FP_DIR}/${INV_FP_SAVEID}.json"; [[ -f "$c" ]] || return 0; python3 - "$c" <<'PY' 2>/dev/null || true
-import json,sys
-try:
-  with open(sys.argv[1],encoding="utf-8") as f: j=json.load(f)
-  print(j.get("inv_fp",""))
-except Exception: pass
-PY
-}
+prev_invfp() { local c="${INV_FP_DIR}/${INV_FP_SAVEID}.json"; [[ -f "$c" ]] || return 0; python3 scripts/python/runtime/read_prev_invfp.py "$c"; }
+
+
 write_invfp_cache() {
   local out="$1" fp="${2:-}" base="${3:-}" mtime="${4:-}"
-  FP="$fp" BASE="$base" MTIME="$mtime" python3 - "$out" <<'PY' || exit 0
-import json, os, sys, datetime
-out=sys.argv[1]
-doc={"generated_at":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-     "inv_fp":os.environ.get("FP",""),
-     "base":os.environ.get("BASE",""),
-     "mtime":os.environ.get("MTIME","")}
-os.makedirs(os.path.dirname(out), exist_ok=True)
-with open(out,"w",encoding="utf-8") as f: json.dump(doc,f,indent=2)
-PY
+  python3 scripts/python/runtime/write_invfp_cache.py --out "$out" --inv-fp "$fp" --base "$base" --mtime "$mtime" || true
 }
 
+
 # --- manifest check (raw unchanged?) --------------------------------------
+man="$(python3 scripts/python/runtime/read_manifest_mtime.py "${MANIFEST}" 2>/dev/null || true)"
+
 raw_unchanged_vs_manifest() {
-  [[ -n "${INV_FP_BASE:-}" && -f "${INV_FP_BASE}" && -f "${MANIFEST}" ]] || return 1
-  local cur man
-  cur="$(stat -c %Y "${INV_FP_BASE}" 2>/dev/null || stat -f %m "${INV_FP_BASE}" 2>/dev/null || true)"; [[ -n "$cur" ]] || return 1
-  man="$(
-    python3 - "${MANIFEST}" <<'PY' 2>/dev/null || true
-import json,sys
-try:
-  with open(sys.argv[1],encoding="utf-8") as f: j=json.load(f)
-  for k in ("source_mtime","src_mtime","sourceMtime","sourceMTime","mtime"):
-    if k in j: print(str(j[k])); break
-except Exception: pass
-PY
-  )"
-  [[ -n "$man" && "$cur" == "$man" ]]
+  # True when the raw save's mtime matches the last manifest's recorded mtime.
+  # Requires both values to be non-empty (epoch seconds as strings).
+  [[ -n "${man:-}" && -n "${INV_FP_MTIME:-}" ]] || return 1
+  [[ "$man" == "$INV_FP_MTIME" ]]
 }
 
 # --- main -----------------------------------------------------------------

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, json, os, time
+import argparse, json
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -32,7 +32,7 @@ def main():
         "source_path": str(src),
         "source_mtime": mtime,
         "out_json": str(decoded),
-        "decoder_used": "scripts/python/nms_hg_decoder.py",
+        "decoder_used": "scripts/python/pipeline/nms_hg_decoder.py",
     }
 
     out.parent.mkdir(parents=True, exist_ok=True)
