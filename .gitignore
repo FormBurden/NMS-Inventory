@@ -85,3 +85,4 @@ data/
 .env.redacted
 assets/img*
 .env.dbshim
+scripts/bundle*
