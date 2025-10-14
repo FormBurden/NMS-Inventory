@@ -320,23 +320,22 @@ copy_rel() {
   local src="$1"
   local outroot="$2"
   local rel="${src#./}"
-  [[ "$rel" == "$src" ]] && rel="$src"
+  [[ "$rel" == "$src" ]] && rel="$src"  # handle paths without leading ./
+
+  # Normalize any leading ./ segments for consistent layout
   rel="${rel#./}"
 
+  # Lazily build the redactor once
   ensure_redactor
 
+  # Ensure parent dir
   local dest="$outroot/$rel"
   mkdir -p "$(dirname "$dest")"
-
-  # If it's a directory, copy it verbatim; final_redact_pass() will sweep files inside.
-  if [[ -d "$src" ]]; then
-    cp -a "$src" "$dest"
-    return 0
-  fi
 
   if is_text_file "$src"; then
     redact_stream < "$src" > "$dest"
   else
+    # Binary or unknown: copy byte-for-byte
     cp -a "$src" "$dest"
   fi
 }
@@ -626,13 +625,12 @@ AWK
   REDACTOR_READY=1
 }
 
-iis_text_file() {
-  # Return 0 for text-like files, 1 for binary/unknown or non-regular paths
+is_text_file() {
+  # Return 0 for text-like, 1 for binary
   local f="$1"
-  [[ -f "$f" ]] || return 1   # directories, symlinks, sockets, etc → treat as non-text
+  # Grep heuristic is fast & adequate here
   LC_ALL=C grep -Iq . "$f"
 }
-
 
 redact_stream() {
   # Usage: redact_stream < input > output
@@ -1140,18 +1138,9 @@ if [[ -f "$FROM_MANIFEST" ]]; then
     [[ -z "${rel// }" ]] && continue
     [[ "$rel" =~ ^# ]] && continue
     # trim leading/trailing whitespace and any Windows CR (avoid glob mismatches)
-    rel="${rel//$'\r'/}"
-    rel="${rel#"${rel%%[![:space:]]*}"}"
-    rel="${rel%"${rel##*[![:space:]]}"}"
-
-    # strip trailing inline comments (everything after first '#')
-    rel="${rel%%#*}"
-
-    # re-trim after comment stripping; skip if now empty
-    rel="${rel#"${rel%%[![:space:]]*}"}"
-    rel="${rel%"${rel##*[![:space:]]}"}"
-    [[ -z "${rel// }" ]] && continue
-
+    rel="${rel#"${rel%%[![:space:]]*}"}"   # ltrim
+    rel="${rel%"${rel##*[![:space:]]}"}"   # rtrim
+    rel="${rel//$'\r'/}"                   # strip CR
 
     # --no-logs affects only top-level logs/* manifest entries
     case "$rel" in
