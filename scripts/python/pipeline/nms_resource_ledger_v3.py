@@ -226,7 +226,7 @@ def _collect_initial_rows(js: Dict[str, Any], save_path: Path, ts: dt.datetime, 
     for owner_type, owner_index, owner_name, inv_kind, inv in owners:
         for r in _slot_records_from_inventory(inv or {}, want_types):
             row = {
-                "snapshot_ts": ts.isoformat(timespec="seconds"),
+                "snapshot_ts": ts.strftime("%Y-%m-%d %H:%M:%S"),
                 "owner_type": owner_type,
                 "owner_index": "" if owner_index is None else int(owner_index),
                 "owner_name": owner_name or "",

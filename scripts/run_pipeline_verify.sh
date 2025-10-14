@@ -20,7 +20,11 @@ echo "[verify] running pipeline with xtrace..."
 echo "[verify] pipeline finished. analyzing: $TRACE_FILE"
 
 # Extract the last printed decode target path from the trace/pipeline output.
-DECODE_TARGET="$(grep -E "$DECODE_PRINT_RX" "$TRACE_FILE" | tail -n1 | sed -E "s/$DECODE_PRINT_RX/\\1/")" || true
+DECODE_TARGET="$(
+  { grep -E "$DECODE_PRINT_RX" "$TRACE_FILE" || true; } \
+  | tail -n1 \
+  | sed -E "s/$DECODE_PRINT_RX/\1/"
+)"
 
 if [[ -z "${DECODE_TARGET:-}" ]]; then
   echo "[verify][ERROR] Pipeline did not print a decode target line like:"
@@ -64,3 +68,5 @@ echo "          ${DECODE_ABS}"
 # (Uncomment if you eventually split stages; for now we just verify the decode step)
 # echo "[verify] proceeding to import/fullparse stages..."
 # bash scripts/import_latest.sh
+exit 0
+

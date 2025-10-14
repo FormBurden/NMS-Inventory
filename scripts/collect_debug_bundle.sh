@@ -6,7 +6,7 @@
 # URL is pinned to http://localhost:8080/*
 
 set -Eeuo pipefail
-shopt -s dotglob nullglob extglob
+shopt -s dotglob nullglob extglob globstar
 
 # -------- Defaults / Env --------
 NMS_URL_PREFIX="${NMS_URL_PREFIX:-http://localhost:8080}"
@@ -320,22 +320,23 @@ copy_rel() {
   local src="$1"
   local outroot="$2"
   local rel="${src#./}"
-  [[ "$rel" == "$src" ]] && rel="$src"  # handle paths without leading ./
-
-  # Normalize any leading ./ segments for consistent layout
+  [[ "$rel" == "$src" ]] && rel="$src"
   rel="${rel#./}"
 
-  # Lazily build the redactor once
   ensure_redactor
 
-  # Ensure parent dir
   local dest="$outroot/$rel"
   mkdir -p "$(dirname "$dest")"
+
+  # If it's a directory, copy it verbatim; final_redact_pass() will sweep files inside.
+  if [[ -d "$src" ]]; then
+    cp -a "$src" "$dest"
+    return 0
+  fi
 
   if is_text_file "$src"; then
     redact_stream < "$src" > "$dest"
   else
-    # Binary or unknown: copy byte-for-byte
     cp -a "$src" "$dest"
   fi
 }
@@ -625,12 +626,13 @@ AWK
   REDACTOR_READY=1
 }
 
-is_text_file() {
-  # Return 0 for text-like, 1 for binary
+iis_text_file() {
+  # Return 0 for text-like files, 1 for binary/unknown or non-regular paths
   local f="$1"
-  # Grep heuristic is fast & adequate here
+  [[ -f "$f" ]] || return 1   # directories, symlinks, sockets, etc → treat as non-text
   LC_ALL=C grep -Iq . "$f"
 }
+
 
 redact_stream() {
   # Usage: redact_stream < input > output
@@ -757,6 +759,29 @@ collect_dev_logs_windowed() {
   done
   shopt -u nullglob
 }
+
+# New: collect top-level logs/* by 2-minute window (directory name timestamp)
+collect_project_logs_windowed() {
+  local outroot="$1"
+  local base="logs"
+  [[ -d "$base" ]] || return 0
+  local start="${NOW_EPOCH}"
+  local window="${DEV_LOG_WINDOW_SEC:-120}"
+  shopt -s nullglob
+  for dir in "$base"/*; do
+    [[ -d "$dir" ]] || continue
+    local dn="$(basename "$dir")"
+    local epoch="$(_dirname_to_epoch "$dn" || true)"
+    [[ -n "$epoch" ]] || continue
+    local diff=$(( epoch - start ))
+    (( diff < 0 )) && diff=$(( -diff ))
+    if (( diff <= window )); then
+      copy_rel "$dir" "$outroot"
+    fi
+  done
+  shopt -u nullglob
+}
+
 
 collect_decode_logs() {
   local outroot="$1"
@@ -1114,17 +1139,46 @@ if [[ -f "$FROM_MANIFEST" ]]; then
     # skip blanks/comments
     [[ -z "${rel// }" ]] && continue
     [[ "$rel" =~ ^# ]] && continue
-    # normalize CRLF
-    rel="${rel%$'\r'}"
+    # trim leading/trailing whitespace and any Windows CR (avoid glob mismatches)
+    rel="${rel//$'\r'/}"
+    rel="${rel#"${rel%%[![:space:]]*}"}"
+    rel="${rel%"${rel##*[![:space:]]}"}"
+
+    # strip trailing inline comments (everything after first '#')
+    rel="${rel%%#*}"
+
+    # re-trim after comment stripping; skip if now empty
+    rel="${rel#"${rel%%[![:space:]]*}"}"
+    rel="${rel%"${rel##*[![:space:]]}"}"
+    [[ -z "${rel// }" ]] && continue
+
+
+    # --no-logs affects only top-level logs/* manifest entries
+    case "$rel" in
+      ./logs/*|logs/*)
+        if [[ "$DO_LOGS" -eq 0 ]]; then
+          echo "[INFO] skipping per --no-logs: $rel"
+          continue
+        fi
+        ;;
+    esac
+
 
     # If the manifest entry contains glob characters, expand it.
     if [[ "$rel" == *[\*\?\[]* ]]; then
       mapfile -t _matches < <(compgen -G -- "$rel" || true)
+
+      # Fallback: if the pattern ends with ".log", also allow compressed suffixes (e.g., ".log.gz")
+      if (( ${#_matches[@]} == 0 )) && [[ "$rel" == *.log ]]; then
+        mapfile -t _matches < <(compgen -G -- "${rel}*" || true)
+      fi
+
       if (( ${#_matches[@]} == 0 )); then
         echo "[WARN] listed pattern had no matches: $rel"
         MISSING_FILES+=("$rel")
         continue
       fi
+
       for m in "${_matches[@]}"; do
         copy_rel "$m" "$TMP_WORK"
       done
@@ -1163,14 +1217,15 @@ if { [[ "${CAPTURE_SEC:-0}" -gt 0 ]] && { [[ "${DO_NETWORK:-1}" -eq 1 ]] || [[ "
 fi
 
 
-
-# -------- Logs (DEV window + optional decode/import) --------
-# --no-logs disables ALL logs, including --decode-logs.
+# --no-logs applies only to top-level logs/* and networking (manifest items elsewhere unaffected)
 if [[ "$DO_LOGS" -eq 1 ]]; then
-  # Always include DEV logs when logs are enabled (windowed by dir name).
+  # Include timestamped top-level logs/* by 2-minute window (dir name-based)
+  collect_project_logs_windowed "$TMP_WORK/sys"
+
+  # Include DEV logs by 2-minute window
   collect_dev_logs_windowed "$TMP_WORK/sys"
 
-  # Include decoder/import logs only when explicitly requested.
+  # Decoder/import logs only when explicitly requested
   if [[ "${DO_DECODE_LOGS:-0}" -eq 1 ]]; then
     collect_decode_logs "$TMP_WORK/sys"
   fi
