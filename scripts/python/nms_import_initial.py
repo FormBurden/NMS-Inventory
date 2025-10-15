@@ -405,7 +405,7 @@ def main() -> None:
         items.append({
             "source_path": str(j),
             "save_root": infer_save_root(j),
-            "source_mtime": "",
+            "source_mtime": dec_m,
             "decoded_mtime": dec_m,
             "out_json": str(j),
             "json_sha256": jhash,
@@ -428,7 +428,7 @@ def main() -> None:
                     synth.append({
                         "source_path": str(j),
                         "save_root": infer_save_root(j),
-                        "source_mtime": "",
+                        "source_mtime": iso_file_ts(j.stat().st_mtime),
                         "decoded_mtime": iso_file_ts(j.stat().st_mtime),
                         "out_json": str(j),
                         "json_sha256": jhash,

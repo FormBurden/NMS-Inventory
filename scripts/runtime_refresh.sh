@@ -118,6 +118,7 @@ fi
 if [[ $ALLOW_IMPORT -eq 1 ]]; then
   echo "[verify] running pipeline with xtrace..."
   set -x
+  export NMS_NONINTERACTIVE=1
   if run_pipeline; then
     set +x
     echo "[import] success"

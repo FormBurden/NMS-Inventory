@@ -98,11 +98,29 @@ DB_SHIM="$ROOT/.env.dbshim"
 
 # --- DB imports -----------------------------------------------------------
 echo "[PIPE] initial import into DB ($INITIAL_TABLE)"
-python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" --initial \
-  --saves "$clean_json" \
-  --db-import --db-env "$DB_SHIM" --db-table "$INITIAL_TABLE" \
-  ${USE_MTIME:+--use-mtime} \
-  >"$LOGS/initial_import.$stamp.log" 2>&1
+# Resolve DB CLI params from env (prefer NMS_DB_*; fallback to DB_*)
+DB_USER="$(strip_quotes "$(get_env DB_USER "$(get_env NMS_DB_USER "nms_user")")")"
+DB_NAME="$(strip_quotes "$(get_env DB_NAME "$(get_env NMS_DB_NAME "nms_database")")")"
+DB_PASS="$(strip_quotes "$(get_env DB_PASS "$(get_env NMS_DB_PASS "")")")"
+
+# Non-interactive/background: honor .env; don't prompt
+if [[ -n "$DB_PASS" ]]; then
+  export MYSQL_PWD="$DB_PASS"
+fi
+
+# Interactive fallback: prompt only if no password from env and not forced noninteractive
+if [[ -z "${MYSQL_PWD:-}" && -z "$DB_PASS" && -z "${NMS_NONINTERACTIVE:-}" && -t 0 && -t 1 ]]; then
+  printf "[DB] Enter password for %s: " "$DB_USER" >&2
+  stty -echo; IFS= read -r MYSQL_PWD; stty echo; printf "\n" >&2
+  export MYSQL_PWD
+fi
+
+
+# Build a proper manifest (items[] with out_json) and emit SQL → MariaDB
+python3 "$ROOT/scripts/python/nms_import_initial.py" \
+  --initial "$raw_json" \
+  --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
+| mariadb -u "$DB_USER" -D "$DB_NAME" >"$LOGS/initial_import.$stamp.log" 2>&1
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
 python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
@@ -112,6 +130,6 @@ python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
   --db-write-ledger --db-env "$DB_SHIM" --db-ledger-table "$LEDGER_TABLE" \
   --session-minutes "$SESSION_MINUTES" \
   ${USE_MTIME:+--use-mtime} \
-  >"$LOGS/ledger.$stamp.log" 2>&1
+  >"$LOGS/ledger.$stamp.log" 2>&1 || true
 
 echo "[PIPE] done."
