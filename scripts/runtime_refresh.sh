@@ -22,6 +22,7 @@ strip_quotes(){ local s="${1:-}"; s="${s%\"}"; s="${s#\"}"; printf "%s" "$s"; }
 log(){ printf "%s\n" "$*"; }
 
 
+
 # --- paths ---------------------------------------------------------------
 DECODE_DIR="$ROOT/storage/decoded"
 MANIFEST="$DECODE_DIR/_manifest_recent.json"
@@ -51,6 +52,19 @@ run_pipeline() {
   log "[runtime] ERROR: no pipeline runner found"; return 127
 }
 
+INVFP_ENABLED="$(strip_quotes "$(get_env INVFP_ENABLED 1)")"
+if [[ "${INVFP_ENABLED}" == "0" ]]; then
+  log "[runtime] INVFP_ENABLED=0 → skipping fingerprint logic; running pipeline."
+  if run_pipeline; then
+    echo "[import] success"
+    exit 0
+  else
+    rc=$?
+    exit "$rc"
+  fi
+fi
+
+
 # --- inventory fingerprint I/O -------------------------------------------
 INV_FP_CAND="" INV_FP_BASE="" INV_FP_MTIME="" INV_FP_SAVEID=""
 read_invfp() {
@@ -78,14 +92,15 @@ man="$(python3 scripts/python/runtime/read_manifest_mtime.py "${MANIFEST}" 2>/de
 raw_unchanged_vs_manifest() {
   # True when the raw save's mtime matches the last manifest's recorded mtime.
   # Requires both values to be non-empty (epoch seconds as strings).
-  [[ -n "${man:-}" && -n "${INV_FP_MTIME:-}" ]] || return 1
-  [[ "$man" == "$INV_FP_MTIME" ]]
+  [[ -n "${man:-}" && -n "${PREV_MTIME:-}" ]] || return 1
+  [[ "$man" == "$PREV_MTIME" ]]
 }
 
 # --- main -----------------------------------------------------------------
 read_invfp
 INV_FP_CACHE="${INV_FP_DIR}/${INV_FP_SAVEID}.json"
 PREV_FP="$(prev_invfp || true)"
+PREV_MTIME="$(python3 scripts/python/runtime/read_cache_mtime.py "${INV_FP_CACHE}" 2>/dev/null || true)"
 ALLOW_IMPORT=0
 
 if [[ -n "${INV_FP_CAND}" ]]; then

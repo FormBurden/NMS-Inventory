@@ -7,6 +7,8 @@ header('Content-Type: application/json');
 try {
     $scope = strtolower($_GET['scope'] ?? 'character');
     $limit = max(1, min((int)($_GET['limit'] ?? 500), 2000));
+    $sort   = strtolower($_GET['sort'] ?? ($_GET['order'] ?? ''));
+    $wantRecent = ($sort === 'recent');
 
     // UI scopes → canonical owner_type values in DB
     $SCOPE_TO_OWNERS = [
@@ -40,19 +42,39 @@ try {
     // Build owners placeholder list: ?, ?, ...
     $placeholders = implode(',', array_fill(0, count($owners), '?'));
 
-    // Primary query: use view if available
-    $sql = "
-        SELECT
-            resource_id,
-            SUM(amount)     AS amount,
-            MIN(item_type)  AS item_type
-        FROM v_api_inventory_rows_active
-        WHERE owner_type IN ($placeholders)
-        $invSql
-        GROUP BY resource_id
-        ORDER BY amount DESC
-        LIMIT $limit
-    ";
+    // Primary query: prefer "recent" if requested, else amount-desc
+    if ($wantRecent) {
+        // Try a ledger-aware recency sort; if the ledger table doesn't exist, we'll fall back.
+        $sql = "
+            SELECT
+                a.resource_id,
+                SUM(a.amount)     AS amount,
+                MIN(a.item_type)  AS item_type,
+                MAX(ld.applied_at) AS changed_at
+            FROM v_api_inventory_rows_active AS a
+            LEFT JOIN nms_ledger_deltas AS ld
+              ON ld.resource_id = a.resource_id
+            WHERE a.owner_type IN ($placeholders)
+            $invSql
+            GROUP BY a.resource_id
+            ORDER BY (changed_at IS NULL) ASC, changed_at DESC, amount DESC
+            LIMIT $limit
+        ";
+    } else {
+        $sql = "
+            SELECT
+                resource_id,
+                SUM(amount)     AS amount,
+                MIN(item_type)  AS item_type
+            FROM v_api_inventory_rows_active
+            WHERE owner_type IN ($placeholders)
+            $invSql
+            GROUP BY resource_id
+            ORDER BY amount DESC
+            LIMIT $limit
+        ";
+    }
+
 
     try {
         $stmt = db()->prepare($sql);

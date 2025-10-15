@@ -16,6 +16,7 @@ const DEFAULTS = [
   'showNegatives'  => true,
   'autoRefreshSec' => 15,         // 0=off
   'theme'          => 'system',   // light | dark | system
+  'recentFirst'   => false,
 ];
 
 function json_out($data, int $code = 200): void {

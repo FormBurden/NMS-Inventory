@@ -17,6 +17,8 @@ fi
 # Optional
 WATCH_FILE="${NMS_WATCH_FILE:-save2.hg}"
 DEBOUNCE_SEC="${NMS_WATCH_DEBOUNCE:-3}"
+STARTUP_DELAY="${NMS_WATCH_STARTUP_DELAY:-60}"
+
 
 PROFILE_DIR="$NMS_SAVE_ROOT/$NMS_PROFILE"
 TARGET="$PROFILE_DIR/$WATCH_FILE"
@@ -35,6 +37,8 @@ echo "[watch] watching: $TARGET"
 echo "[watch] press Ctrl-C to stop"
 
 last_run=0
+start_time="$(date +%s)"
+
 
 while true; do
   # wake up on any activity under the profile dir
@@ -42,6 +46,13 @@ while true; do
   [[ -f "$TARGET" ]] || continue
 
   now=$(date +%s)
+  # Startup gate: ignore early events while NMS is booting
+  if (( now - start_time < STARTUP_DELAY )); then
+    remain=$(( STARTUP_DELAY - (now - start_time) ))
+    echo "[watch] startup gate active (${remain}s left) — ignoring event"
+    continue
+  fi
+
   (( now - last_run < DEBOUNCE_SEC )) && continue
 
   echo "[watch] change detected → runtime_refresh.sh"

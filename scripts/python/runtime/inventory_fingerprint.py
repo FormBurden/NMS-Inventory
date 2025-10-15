@@ -203,6 +203,10 @@ def main() -> int:
         i += 1
 
     env = _ensure_env_loaded()
+    if (env.get("INVFP_ENABLED", "1").strip().strip('"') == "0"):
+    _emit({})  # empty object => downstream treats as “no candidate fp”
+    return 0
+
 
     if use_latest and not decoded_path:
         # 1) Manifest first

@@ -113,10 +113,20 @@
       rows = rows.filter((r) => Number(r.amount || 0) >= 0);
     }
     
-    // Optional: alpha sort by display name for readability
-    rows = rows.slice().sort((x, y) =>
-      String(x.display_name || x.resource_id).localeCompare(String(y.display_name || y.resource_id))
-    );
+    // Sort: "recent first" if enabled and timestamps are present; else alpha by name
+    if (settings.recentFirst) {
+      const toTs = (v) => {
+        if (!v) return 0;
+        const t = Date.parse(v);
+        return Number.isFinite(t) ? t : 0;
+      };
+      rows = rows.slice().sort((a, b) => (toTs(b.changed_at) - toTs(a.changed_at)));
+    } else {
+      rows = rows.slice().sort((x, y) =>
+        String(x.display_name || x.resource_id).localeCompare(String(y.display_name || y.resource_id))
+      );
+    }
+
 
     rows.forEach((r, i) => els.grid.appendChild(cardRow(r, i < EAGER_IMG_COUNT)));
   }
@@ -203,6 +213,7 @@
     showNegatives: true,         // show negative rows in Inventory
     autoRefreshSec: 10,          // 0 (off), 5, 15, 60, ...
     theme: "system",             // light | dark | system
+    recentFirst: false,
   };
   let settings = { ...DEFAULT_SETTINGS };
   let refreshTimer = null;
@@ -259,6 +270,28 @@
     // Hook UI events first
     if (els.search) els.search.addEventListener("input", render);
     if (els.includeTech) els.includeTech.addEventListener("change", loadInventory);
+    // --- Recent-first toggle UI ---
+    try {
+      const host = els.tabs || (els.search && els.search.parentElement) || document.body;
+      const wrap = el("label", { className: "nms-toggle-recent", style: "margin-left: .75rem; display:inline-flex; gap:.4rem; align-items:center;" }, []);
+      const cb = el("input", { type: "checkbox", id: "toggleRecentFirst" }, []);
+      const txt = el("span", { textContent: "Recent first" }, []);
+      wrap.appendChild(cb);
+      wrap.appendChild(txt);
+      host.appendChild(wrap);
+
+      // reflect current setting
+      cb.checked = !!settings.recentFirst;
+
+      // persist and re-render on change
+      cb.addEventListener("change", () => {
+        settings.recentFirst = !!cb.checked;
+        try { localStorage.setItem("nms_settings", JSON.stringify(settings)); } catch { }
+        // re-load so we can request ?sort=recent and get changed_at when available
+        loadInventory();
+      });
+    } catch { }
+
 
     // Load settings first, apply visual prefs (icon size/theme)
     try { await loadSettings(); } catch { }
