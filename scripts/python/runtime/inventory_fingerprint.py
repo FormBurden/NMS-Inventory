@@ -1,282 +1,249 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-import argparse, hashlib, json, os, re, sys, glob
-from typing import Any, Dict, Iterable, Tuple, Optional
+# -*- coding: utf-8 -*-
+"""
+inventory_fingerprint.py
+Compute a stable fingerprint for the latest decoded save JSON (or a provided one),
+along with the raw-save mtime (epoch seconds) and a stable saveid (st_XXXXXXXXXXXXXX).
 
+Outputs compact JSON to stdout:
+  {"inv_fp":"<sha256>","base":"<json_path>","mtime":"<epoch>","saveid":"<st_id|default>"}
 
+Usage:
+  --latest           Resolve the latest decoded JSON using the manifest/glob fallback
+  --decoded <path>   Use the provided decoded JSON path
+  --emit-json        (ignored; JSON is always emitted for compatibility)
 
-HERE = os.path.dirname(__file__)
-ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+Exit codes:
+  0  success
+  1  could not resolve a decoded JSON
+  2  decoded JSON unreadable or empty
+"""
 
-# --- Begin .env fallback (only if needed) ---
-def _maybe_load_env_file_for_hg():
-    # Only try to read .env if NMS_HG_PATH isn't already present
-    if os.getenv("NMS_HG_PATH"):
-        return
+import sys
+import os
+import re
+import json
+import time
+import glob
+import hashlib
+from typing import Optional, Tuple
 
-    # Compute ROOT locally to avoid order issues
-    here = os.path.dirname(__file__)
-    root = os.path.abspath(os.path.join(here, "..", ".."))
-    env_path = os.path.join(root, ".env")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+# -------------------------
+# Utilities
+# -------------------------
+
+def _load_env(env_path: str) -> dict:
+    env = {}
     try:
-        if os.path.exists(env_path):
-            with open(env_path, "r", encoding="utf-8") as f:
-                for raw in f:
-                    line = raw.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    k = k.strip()
-                    v = v.strip()
-                    # Strip optional quotes
-                    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-                        v = v[1:-1]
-                    # Don't overwrite already-exported vars
-                    if os.getenv(k) is None:
-                        os.environ[k] = v
-    except Exception:
-        # Soft fallback—ignore read/parse errors
-        pass
-
-_maybe_load_env_file_for_hg()
-# --- End .env fallback ---
-
-
-# Reuse your decoder + helpers
-sys.path.append(HERE)                     # scripts/python
-sys.path.append(os.path.join(HERE, "..")) # scripts/
-sys.path.append(os.path.join(HERE, "..", "pipeline"))  # scripts/python/pipeline
-
-# --- Early .env priming for NMS_HG_PATH (order-safe) ---
-if os.getenv("NMS_HG_PATH") is None:
-    _here = os.path.dirname(__file__)
-    _root = os.path.abspath(os.path.join(_here, "..", ".."))
-    _env = os.path.join(_root, ".env")
-    try:
-        if os.path.exists(_env):
-            with open(_env, "r", encoding="utf-8") as _f:
-                for _raw in _f:
-                    _line = _raw.strip()
-                    if not _line or _line.startswith("#") or "=" not in _line:
-                        continue
-                    _k, _v = _line.split("=", 1)
-                    _k = _k.strip()
-                    _v = _v.strip()
-                    if (_v.startswith('"') and _v.endswith('"')) or (_v.startswith("'") and _v.endswith("'")):
-                        _v = _v[1:-1]
-                    if _k == "NMS_HG_PATH" and os.getenv("NMS_HG_PATH") is None:
-                        os.environ["NMS_HG_PATH"] = _v
-                        break  # we only care about this one key
-    except Exception:
-        pass
-# --- End early .env priming ---
-
-
-from nms_hg_decoder import decode_to_json_bytes
-from nms_extract_inventory import walk, obj_is_slot, is_progress_token
-
-SANE_CAPS = {50, 100, 101, 200, 250, 500, 801, 1000, 1001, 2000, 9999}
-
-def _amount(slot: dict) -> int:
-    a = slot.get("1o9")
-    cap = slot.get("F9q")
-    if not isinstance(a, int) or not isinstance(cap, int):
-        return 0
-    if cap in SANE_CAPS and a <= cap:
-        return max(a, 0)
-    candidates = [x for x in (a, cap) if isinstance(x, int) and x > 0]
-    return min(candidates) if candidates else 0
-
-def _infer_owner(path: Iterable[Any]) -> str:
-    segs = {str(p) for p in path if isinstance(p, str)}
-    if ";l5" in segs: owner = "SUIT"
-    elif "P;m" in segs: owner = "SHIP"
-    elif "<IP" in segs: owner = "FREIGHTER"
-    elif "3Nc" in segs: owner = "STORAGE"
-    elif "8ZP" in segs: owner = "VEHICLE"
-    else:
-        pstr = ".".join(str(p) for p in list(path)[-256:])
-        if ".;l5." in pstr: owner = "SUIT"
-        elif ".P;m." in pstr: owner = "SHIP"
-        elif ".<IP." in pstr: owner = "FREIGHTER"
-        elif ".3Nc." in pstr: owner = "STORAGE"
-        elif ".8ZP." in pstr: owner = "VEHICLE"
-        else: owner = "UNKNOWN"
-    if owner == "FREIGHTER":
-        owner = "FRIGATE"
-    return owner
-
-def _load_json_from_hg(hg_path: str) -> Any:
-    with open(hg_path, "rb") as f:
-        raw = f.read()
-    jb = decode_to_json_bytes(raw, debug=False)
-    return json.loads(jb.decode("utf-8"))
-
-def _load_json_from_decoded(json_path: str) -> Any:
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def _find_latest_decoded_from_manifest(manifest_path: Optional[str] = None) -> Optional[str]:
-    """
-    Try storage/decoded/_manifest_recent.json → items[0].out_json (or source_path).
-    Returns a path to an existing decoded JSON, or None.
-    """
-    if manifest_path is None:
-        manifest_path = os.path.join(ROOT, "storage", "decoded", "_manifest_recent.json")
-    try:
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            m = json.load(f)
-        items = m.get("items") or []
-        if items:
-            j = items[0]
-            cand = j.get("out_json") or j.get("source_path")
-            if cand and os.path.isfile(cand):
-                return cand
-    except Exception:
-        pass
-    return None
-
-
-def compute_rows(obj: Any):
-    totals: Dict[Tuple[str, str], int] = {}
-    for path, _parent, _key, val in walk(obj):
-        if not isinstance(val, dict): continue
-        if not obj_is_slot(val): continue
-        rid = val.get("b2n")
-        if is_progress_token(rid): continue
-        amt = _amount(val)
-        if amt <= 0: continue
-        owner = _infer_owner(path)
-        key = (owner, rid)
-        totals[key] = totals.get(key, 0) + amt
-    rows = [f"{o}|{rid}|{totals[(o, rid)]}" for (o, rid) in sorted(totals)]
-    return rows
-
-def fingerprint_rows(rows) -> str:
-    payload = ";".join(rows)
-    return hashlib.blake2b(payload.encode("utf-8"), digest_size=32).hexdigest()
-
-# -------- latest save discovery --------
-def _load_env(path: str) -> Dict[str, str]:
-    out: Dict[str, str] = {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line: continue
-                k, v = line.split("=", 1)
-                out[k.strip()] = v.strip().strip("'").strip('"')
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, v = s.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                env[k] = v
     except Exception:
         pass
-    return out
+    return env
 
-def _find_latest_hg(env_file: Optional[str]) -> str:
-    # Priority 1: env var NMS_HG_PATH
-    p = os.environ.get("NMS_HG_PATH")
-    # Allow NMS_HG_PATH to be a directory: pick newest save*.hg
-    if p and os.path.isdir(p):
-        candidates = sorted(
-            glob.glob(os.path.join(p, "save*.hg")),
-            key=lambda x: os.path.getmtime(x), reverse=True
-        )
-        if candidates:
-            return candidates[0]
+def _ensure_env_loaded() -> dict:
+    """Always read .env and merge into process env (without overwriting existing entries)."""
+    env_path = os.path.join(ROOT, ".env")
+    merged = dict(os.environ)
+    if os.path.isfile(env_path):
+        disk = _load_env(env_path)
+        for k, v in disk.items():
+            if k not in merged or not merged[k]:
+                merged[k] = v
+    return merged
 
-    # Priority 2: .env -> NMS_HG_PATH
-    if env_file and os.path.isfile(env_file):
-        e = _load_env(env_file)
-        p2 = e.get("NMS_HG_PATH")
-        # Also allow a directory here: pick newest save*.hg
-        if p2 and os.path.isdir(p2):
-            candidates = sorted(
-                glob.glob(os.path.join(p2, "save*.hg")),
-                key=lambda x: os.path.getmtime(x), reverse=True
-            )
-            if candidates:
-                return candidates[0]
-        root = e.get("NMS_SAVE_ROOT")
-        prof = e.get("NMS_PROFILE")
-        if root and prof:
-            hg_dir = os.path.join(root, prof)
-            candidates = sorted(glob.glob(os.path.join(hg_dir, "save*.hg")),
-                               key=lambda x: os.path.getmtime(x), reverse=True)
-            if candidates:
-                return candidates[0]
-    # Priority 3: env vars NMS_SAVE_ROOT + NMS_PROFILE
-    root = os.environ.get("NMS_SAVE_ROOT"); prof = os.environ.get("NMS_PROFILE")
-    if root and prof:
-        hg_dir = os.path.join(root, prof)
-        candidates = sorted(glob.glob(os.path.join(hg_dir, "save*.hg")),
-                           key=lambda x: os.path.getmtime(x), reverse=True)
-        if candidates:
-            return candidates[0]
-    raise SystemExit("Could not resolve latest save*.hg (set NMS_HG_PATH or NMS_SAVE_ROOT+NMS_PROFILE / .env).")
+def _to_epoch_seconds(val: object) -> Optional[str]:
+    """Accepts int/float/str epoch; or 'YYYY-MM-DD HH:MM:SS' in localtime."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return str(int(val))
+    s = str(val).strip()
+    if not s:
+        return None
+    if s.isdigit():
+        return s
+    try:
+        tm = time.strptime(s, "%Y-%m-%d %H:%M:%S")
+        return str(int(time.mktime(tm)))
+    except Exception:
+        return None
 
-def _derive_saveid(path: str) -> str:
+def _derive_saveid_from_path(path: str) -> Optional[str]:
     m = re.search(r"(st_[0-9]+)", path)
+    return m.group(1) if m else None
+
+def _derive_saveid_from_env(env: dict) -> str:
+    sid = (env.get("NMS_PROFILE") or "").strip()
+    m = re.match(r"(st_[0-9]+)", sid)
     return m.group(1) if m else "default"
 
-def main():
-    ap = argparse.ArgumentParser(description="Inventory-only fingerprint for NMS .hg (with optional metadata).")
-    ap.add_argument("--hg", help="Path to save*.hg")
-    ap.add_argument("--latest", action="store_true", help="Locate the latest save*.hg using .env / environment.")
-    ap.add_argument("--env-file", default=os.path.join(ROOT, ".env"), help="Path to .env (used with --latest).")
-    ap.add_argument("--decoded", help="Path to decoded JSON (skip HG decode)")
-    ap.add_argument("--emit-json", action="store_true", help="Emit JSON (inv_fp/base/mtime/saveid)")
-    args = ap.parse_args()
+# -------------------------
+# Resolution helpers
+# -------------------------
 
-    # Choose input: prefer decoded JSON when provided or discoverable
-    data = None
-    base = ""
-    mtime = ""
-    saveid = "default"
+def _read_manifest() -> Optional[dict]:
+    p = os.path.join(ROOT, "storage", "decoded", "_manifest_recent.json")
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
-    if args.decoded:
-        json_path = args.decoded
-        if not os.path.isfile(json_path):
-            raise SystemExit(f"Decoded JSON not found: {json_path}")
-        data = _load_json_from_decoded(json_path)
-        base = json_path
-        mtime = str(int(os.path.getmtime(json_path)))
-        saveid = _derive_saveid(json_path)
-    else:
-        hg_path = None
-        if args.hg:
-            hg_path = args.hg
-        elif args.latest:
+def _manifest_decoded_path_and_epoch() -> Tuple[Optional[str], Optional[str]]:
+    """Return (decoded_json_path, raw_save_epoch_from_manifest) or (None, None)."""
+    man = _read_manifest()
+    if not man:
+        return None, None
+    # Try top-level first
+    epoch = _to_epoch_seconds(
+        man.get("source_mtime") or man.get("src_mtime") or man.get("mtime")
+    )
+    # Look into items[0]
+    items = man.get("items")
+    cand = None
+    if isinstance(items, list) and items:
+        it0 = items[0]
+        cand = it0.get("out_json") or it0.get("source_path") or it0.get("decoded_json")
+        if not epoch:
+            epoch = _to_epoch_seconds(
+                it0.get("source_mtime") or it0.get("decoded_mtime") or it0.get("mtime")
+            )
+    if cand:
+        # Normalize candidates with a few fallbacks
+        if os.path.isfile(cand):
+            return cand, epoch
+        alt = os.path.normpath(cand)
+        if os.path.isfile(alt):
+            return alt, epoch
+        # If absolute failed, try relative to project root
+        rel = cand
+        if cand.startswith("/"):
             try:
-                hg_path = _find_latest_hg(args.env_file)
-            except SystemExit:
-                hg_path = None
+                rel = os.path.relpath(cand, ROOT)
+            except Exception:
+                rel = cand
+        guess = os.path.join(ROOT, rel)
+        if os.path.isfile(guess):
+            return guess, epoch
+    return None, epoch
 
-        if hg_path and os.path.isfile(hg_path):
-            data = _load_json_from_hg(hg_path)
-            base = hg_path
-            mtime = str(int(os.path.getmtime(hg_path)))
-            saveid = _derive_saveid(hg_path)
+def _find_latest_decoded_glob() -> Optional[str]:
+    decoded_dir = os.path.join(ROOT, "storage", "decoded")
+    try:
+        candidates = glob.glob(os.path.join(decoded_dir, "save*.json"))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return candidates[0]
+    except Exception:
+        return None
+
+# -------------------------
+# Fingerprint computation
+# -------------------------
+
+def _sha256_of_json(doc: object) -> str:
+    """Stable hash of entire JSON content (sorted keys, no whitespace)."""
+    data = json.dumps(doc, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+def _fingerprint_from_decoded(json_path: str, manifest_epoch: Optional[str], env: dict) -> Optional[dict]:
+    if not os.path.isfile(json_path):
+        return None
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+    except Exception:
+        return None
+    inv_fp = _sha256_of_json(doc)
+    # Prefer manifest epoch for raw-save mtime; else fallback to decoded file's mtime
+    mtime = manifest_epoch or str(int(os.path.getmtime(json_path)))
+    saveid = _derive_saveid_from_path(json_path) or _derive_saveid_from_env(env)
+    return {
+        "inv_fp": inv_fp,
+        "base": json_path,
+        "mtime": mtime,
+        "saveid": saveid,
+    }
+
+# -------------------------
+# Main
+# -------------------------
+
+def _emit(obj: dict) -> None:
+    sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\n")
+
+def main() -> int:
+    args = sys.argv[1:]
+    use_latest = False
+    decoded_path = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--latest":
+            use_latest = True
+        elif a == "--decoded" and i + 1 < len(args):
+            decoded_path = args[i + 1]
+            i += 1
+        elif a == "--emit-json":
+            pass  # JSON is always emitted
         else:
-            # Final fallback: try the most recent decoded manifest
-            json_path = _find_latest_decoded_from_manifest()
-            if not json_path:
-                raise SystemExit("Could not resolve decoded JSON from manifest or locate latest save*.hg.")
-            data = _load_json_from_decoded(json_path)
-            base = json_path
-            mtime = str(int(os.path.getmtime(json_path)))
-            saveid = _derive_saveid(json_path)
+            # ignore unknown flags for compatibility
+            pass
+        i += 1
 
-    rows = compute_rows(data)
-    fp = fingerprint_rows(rows)
+    env = _ensure_env_loaded()
 
+    if use_latest and not decoded_path:
+        # 1) Manifest first
+        cand, epoch = _manifest_decoded_path_and_epoch()
+        if not cand:
+            # 2) Fallback: newest storage/decoded/save*.json
+            cand = _find_latest_decoded_glob()
+        if not cand:
+            sys.stderr.write("Could not resolve decoded JSON from manifest or locate latest save*.hg.\n")
+            return 1
+        info = _fingerprint_from_decoded(cand, epoch, env)
+        if not info:
+            sys.stderr.write("Decoded JSON exists but could not be read/parsed.\n")
+            return 2
+        _emit(info)
+        return 0
 
-    # Behavior:
-    # - with --latest: default to JSON (so runtime can parse base/mtime/saveid)
-    # - with --hg: default to raw hash (backward-compatible), unless --emit-json
-    want_json = (getattr(args, "emit_json", False)) or bool(args.latest) or bool(args.decoded)
-    if want_json:
-        print(json.dumps({"inv_fp": fp, "base": base, "mtime": mtime, "saveid": saveid}, ensure_ascii=False))
-    else:
-        print(fp)
+    if decoded_path:
+        # Allow explicit decoded paths
+        man_epoch = _manifest_decoded_path_and_epoch()[1]
+        info = _fingerprint_from_decoded(decoded_path, man_epoch, env)
+        if not info:
+            sys.stderr.write("Decoded JSON exists but could not be read/parsed.\n")
+            return 2
+        _emit(info)
+        return 0
+
+    # If no flags were provided, behave like --latest
+    cand, epoch = _manifest_decoded_path_and_epoch()
+    if not cand:
+        cand = _find_latest_decoded_glob()
+    if not cand:
+        sys.stderr.write("Could not resolve decoded JSON from manifest or locate latest save*.hg.\n")
+        return 1
+    info = _fingerprint_from_decoded(cand, epoch, env)
+    if not info:
+        sys.stderr.write("Decoded JSON exists but could not be read/parsed.\n")
+        return 2
+    _emit(info)
+    return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
