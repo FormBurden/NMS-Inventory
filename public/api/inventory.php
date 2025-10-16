@@ -1,167 +1,169 @@
 <?php
+// public/api/inventory.php
+// Returns inventory rows with optional "Recent first" ordering.
+//
+// Query params:
+//   scope=<owner scope>                (e.g., character, ship, freighter, storage, vehicle, all)
+//   include_tech=1                     (include tech items; default excludes tech)
+//   limit=<N>                          (default 100)
+//   sort=recent                        (enable recency ordering & 'changed_at' in payload)
+
 declare(strict_types=1);
 
-require_once __DIR__ . '/../../includes/db.php';
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
+
+$ROOT = dirname(__DIR__, 2);
+
+// --- DB bootstrap ------------------------------------------------------------
+require_once $ROOT . '/includes/db.php'; // should expose $pdo (PDO). If your include uses $db, we alias below.
+if (!isset($pdo) && isset($db) && $db instanceof PDO) {
+    $pdo = $db;
+}
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database handle ($pdo) not available']);
+    exit;
+}
+
+// --- Inputs ------------------------------------------------------------------
+$limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 100;
+$limit = min($limit, 500); // cap
+
+$scope        = isset($_GET['scope']) ? trim((string)$_GET['scope']) : 'all';
+$includeTech  = isset($_GET['include_tech']) && (string)$_GET['include_tech'] === '1';
+$wantRecent   = isset($_GET['sort']) && strtolower((string)$_GET['sort']) === 'recent';
+
+// Map friendly scope to one or more owner_type values actually stored in DB.
+// Adjust these to match your schema if needed.
+$SCOPE_MAP = [
+    'character' => ['CHARACTER', 'EXOSUIT', 'SUIT'],
+    'ship'      => ['SHIP'],
+    'freighter' => ['FREIGHTER'],
+    'storage'   => ['STORAGE', 'CONTAINER', 'STORAGE_CONTAINER'],
+    'vehicle'   => ['VEHICLE', 'EXOCRAFT'],
+    'all'       => [], // no filter
+];
+
+// Build owner_type filter list (distinct values allowed).
+$ownerTypes = [];
+if (isset($SCOPE_MAP[$scope])) {
+    $ownerTypes = $SCOPE_MAP[$scope];
+} elseif ($scope !== 'all' && $scope !== '') {
+    // Accept raw owner_type value passthrough if caller already knows exact key.
+    $ownerTypes = [$scope];
+}
+
+// --- SQL Fragments -----------------------------------------------------------
+// NOTE: We source current quantities from v_api_inventory_rows_active (your existing view).
+// We join resources for names and compute recency via two pre-aggregated subqueries:
+//   L: last ledger delta per (resource_id, owner_type)
+//   S: last snapshot imported_at where the item appears (via nms_items -> nms_snapshots)
+
+$techFilterSql = $includeTech ? '' : "AND a.item_type <> 'TECH'";
+
+$whereOwnerSql = '';
+$params = [];
+if (!empty($ownerTypes)) {
+    $placeholders = implode(',', array_fill(0, count($ownerTypes), '?'));
+    $whereOwnerSql = "AND a.owner_type IN ($placeholders)";
+    foreach ($ownerTypes as $ot) {
+        $params[] = $ot;
+    }
+}
+
+$selectCommon = "
+    a.resource_id,
+    a.owner_type,
+    COALESCE(res.display_name, res.name, res.code) AS name,
+    SUM(a.amount) AS amount,
+    MIN(a.item_type) AS item_type
+";
+
+$joinCommon = "
+    LEFT JOIN nms_resources AS res
+      ON res.resource_id = a.resource_id
+";
+
+$groupCommon = "GROUP BY a.resource_id, a.owner_type, COALESCE(res.display_name, res.name, res.code)";
+
+// Pre-aggregations for recency
+$joinRecent = "
+    LEFT JOIN (
+        SELECT resource_id, owner_type, MAX(applied_at) AS max_applied_at
+        FROM nms_ledger_deltas
+        GROUP BY resource_id, owner_type
+    ) AS L
+      ON L.resource_id = a.resource_id
+     AND L.owner_type  = a.owner_type
+    LEFT JOIN (
+        SELECT i.resource_id, i.owner_type, MAX(s.imported_at) AS max_imported_at
+        FROM nms_items i
+        JOIN nms_snapshots s ON s.snapshot_id = i.snapshot_id
+        GROUP BY i.resource_id, i.owner_type
+    ) AS S
+      ON S.resource_id = a.resource_id
+     AND S.owner_type  = a.owner_type
+";
 
 try {
-    $scope = strtolower($_GET['scope'] ?? 'character');
-    $limit = max(1, min((int)($_GET['limit'] ?? 500), 2000));
-    $sort   = strtolower($_GET['sort'] ?? ($_GET['order'] ?? ''));
-    $wantRecent = ($sort === 'recent');
-
-    // UI scopes → canonical owner_type values in DB
-    $SCOPE_TO_OWNERS = [
-        'ship'      => ['SHIP'],
-        'character' => ['SUIT','CHARACTER'],
-        'storage'   => ['STORAGE'],
-        'frigate'   => ['FRIGATE'],
-        'vehicles'  => ['VEHICLE'],
-
-        // friendly aliases
-        'freighter' => ['FRIGATE'],
-        'corvette'  => ['FRIGATE'],
-        'base'      => ['STORAGE'],
-    ];
-
-    // Resolve owners for this scope
-    $owners = $SCOPE_TO_OWNERS[$scope] ?? ['SHIP'];
-    if (!$owners) $owners = ['SHIP'];
-
-    // Optional inventory filter (?inv=GENERAL|TECHONLY|CARGO)
-    $inv = strtoupper(trim((string)($_GET['inv'] ?? '')));
-    $invAllowed = ['GENERAL','TECHONLY','CARGO'];
-    $invSql = '';
-    $params = $owners;
-
-    if ($inv && in_array($inv, $invAllowed, true)) {
-        $invSql = ' AND inventory = ?';
-        $params[] = $inv;
-    }
-
-    // Build owners placeholder list: ?, ?, ...
-    $placeholders = implode(',', array_fill(0, count($owners), '?'));
-
-    // Primary query: prefer "recent" if requested, else amount-desc
     if ($wantRecent) {
-        // Try a ledger-aware recency sort; if the ledger table doesn't exist, we'll fall back.
+        // Recent-first path: compute changed_at with ledger primary, snapshot fallback.
         $sql = "
             SELECT
-                a.resource_id,
-                SUM(a.amount)     AS amount,
-                MIN(a.item_type)  AS item_type,
-                MAX(ld.applied_at) AS changed_at
+                $selectCommon,
+                COALESCE(L.max_applied_at, S.max_imported_at) AS changed_at
             FROM v_api_inventory_rows_active AS a
-            LEFT JOIN nms_ledger_deltas AS ld
-              ON ld.resource_id = a.resource_id
-            WHERE a.owner_type IN ($placeholders)
-            $invSql
-            GROUP BY a.resource_id
-            ORDER BY (changed_at IS NULL) ASC, changed_at DESC, amount DESC
+            $joinCommon
+            $joinRecent
+            WHERE 1=1
+              $whereOwnerSql
+              $techFilterSql
+            $groupCommon
+            ORDER BY
+              (COALESCE(L.max_applied_at, S.max_imported_at) IS NULL) ASC,
+              COALESCE(L.max_applied_at, S.max_imported_at) DESC,
+              SUM(a.amount) DESC
             LIMIT $limit
         ";
     } else {
+        // Default path: amount-desc; include name for UI consistency.
         $sql = "
             SELECT
-                resource_id,
-                SUM(amount)     AS amount,
-                MIN(item_type)  AS item_type
-            FROM v_api_inventory_rows_active
-            WHERE owner_type IN ($placeholders)
-            $invSql
-            GROUP BY resource_id
-            ORDER BY amount DESC
+                $selectCommon
+            FROM v_api_inventory_rows_active AS a
+            $joinCommon
+            WHERE 1=1
+              $whereOwnerSql
+              $techFilterSql
+            $groupCommon
+            ORDER BY SUM(a.amount) DESC
             LIMIT $limit
         ";
     }
 
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    try {
-        $stmt = db()->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-    } catch (\PDOException $e) {
-        // Fallback when the view doesn't exist (SQLSTATE 42S02)
-        if ($e->getCode() !== '42S02') { throw $e; }
+    // Shape the response
+    $payload = [
+        'ok'   => true,
+        'rows' => $rows,
+        'meta' => [
+            'scope'        => $scope,
+            'owner_types'  => $ownerTypes,
+            'include_tech' => $includeTech,
+            'limit'        => $limit,
+            'sort'         => $wantRecent ? 'recent' : 'amount_desc',
+        ],
+    ];
 
-            // Fallback: view missing → query latest snapshot directly from nms_items with filters
-            $snap = (int) db()->query("SELECT snapshot_id FROM nms_snapshots ORDER BY imported_at DESC LIMIT 1")->fetchColumn();
-            $fallbackSql = "
-                SELECT
-                    resource_id,
-                    SUM(amount)     AS amount,
-                    MIN(item_type)  AS item_type
-                FROM nms_items
-                WHERE snapshot_id = ?
-                  AND owner_type IN ($placeholders)
-                  $invSql
-                GROUP BY resource_id
-                ORDER BY amount DESC
-                LIMIT $limit
-            ";
-            $stmt = db()->prepare($fallbackSql);
-            $stmt->execute(array_merge([$snap], $params));
-            $rows = $stmt->fetchAll();
-
-    }
-        // If the active-root view returned no rows, retry using nms_items on latest snapshot
-        if (!$rows || count($rows) === 0) {
-            $snap = (int) db()->query("SELECT snapshot_id FROM nms_snapshots ORDER BY imported_at DESC LIMIT 1")->fetchColumn();
-            if ($snap) {
-                $fallbackSql = "
-                    SELECT
-                        resource_id,
-                        SUM(amount)     AS amount,
-                        MIN(item_type)  AS item_type
-                    FROM nms_items
-                    WHERE snapshot_id = ?
-                      AND owner_type IN ($placeholders)
-                      $invSql
-                    GROUP BY resource_id
-                    ORDER BY amount DESC
-                    LIMIT $limit
-                ";
-                $stmt2 = db()->prepare($fallbackSql);
-                $stmt2->execute(array_merge([$snap], $params));
-                $rows2 = $stmt2->fetchAll();
-                if ($rows2 && count($rows2) > 0) {
-                    $rows = $rows2;
-                }
-            }
-        }
-        // Last resort: if still empty, surface UNKNOWN-owner rows so the UI isn't blank
-        if (!$rows || count($rows) === 0) {
-            $snap = (int) db()->query("SELECT snapshot_id FROM nms_snapshots ORDER BY imported_at DESC LIMIT 1")->fetchColumn();
-            if ($snap) {
-                $unkSql = "
-                    SELECT
-                        resource_id,
-                        SUM(amount)     AS amount,
-                        MIN(item_type)  AS item_type
-                    FROM nms_items
-                    WHERE snapshot_id = ?
-                      AND owner_type = 'UNKNOWN'
-                      $invSql
-                    GROUP BY resource_id
-                    ORDER BY amount DESC
-                    LIMIT $limit
-                ";
-                $params3 = [$snap];
-                // If ?inv=GENERAL|TECHONLY|CARGO was provided, pass it through
-                if ($inv && in_array($inv, $invAllowed, true)) {
-                    $params3[] = $inv;
-                }
-                $stmt3 = db()->prepare($unkSql);
-                $stmt3->execute($params3);
-                $rows3 = $stmt3->fetchAll();
-                if ($rows3 && count($rows3) > 0) {
-                    $rows = $rows3;
-                }
-            }
-        }
-
-        echo json_encode(['ok' => true, 'rows' => $rows], JSON_UNESCAPED_SLASHES);
-    } catch (Throwable $e) {
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
-    }
+    echo json_encode($payload);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        'ok'    => false,
+        'error' => 'Query failed',
+        'detail'=> $e->getMessage(),
+    ]);
+}

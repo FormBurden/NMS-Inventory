@@ -169,6 +169,7 @@
       const params = new URLSearchParams();
       if (els.includeTech && els.includeTech.checked) params.set("include_tech", "1");
       if (state.scope) params.set("scope", state.scope);
+      if (settings.recentFirst) params.set("sort", "recent"); // ensure API returns changed_at + recent ORDER BY
       params.set("__nocache", String(Date.now()));
 
       const url = `${ENDPOINTS.inventory}?${params}`;
