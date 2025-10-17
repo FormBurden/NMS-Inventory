@@ -95,6 +95,20 @@ DB_SHIM="$ROOT/.env.dbshim"
   echo "DB_NAME=$(strip_quotes "$(get_env DB_NAME "$(get_env NMS_DB_NAME "")")")"
 } > "$DB_SHIM"
 
+# Sanity: if the shim still contains unexpanded ${VAR}, rebuild via envsubst.
+if grep -q '\${[A-Za-z_][A-Za-z0-9_]*}' "$DB_SHIM"; then
+  # Load .env into the environment for envsubst
+  set -a; [ -f "$ENV_FILE" ] && . "$ENV_FILE"; set +a
+  printf '%s\n' \
+    'DB_HOST=${NMS_DB_HOST}' \
+    'DB_PORT=${NMS_DB_PORT}' \
+    'DB_USER=${NMS_DB_USER}' \
+    'DB_PASS=${NMS_DB_PASS}' \
+    'DB_NAME=${NMS_DB_NAME}' \
+  | envsubst > "$DB_SHIM"
+fi
+
+
 
 # --- DB imports -----------------------------------------------------------
 echo "[PIPE] initial import into DB ($INITIAL_TABLE)"
@@ -116,15 +130,11 @@ if [[ -z "${MYSQL_PWD:-}" && -z "$DB_PASS" && -z "${NMS_NONINTERACTIVE:-}" && -t
 fi
 
 
-# Initial import (direct DB) using ledger v3 helper
-python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
-  --initial \
-  --saves "$raw_json" \
-  --db-import \
-  --db-env "$DB_SHIM" \
-  --db-table "$INITIAL_TABLE" \
-  ${USE_MTIME:+--use-mtime} \
-  >"$LOGS/initial_import.$stamp.log" 2>&1
+# Build a proper manifest (items[] with out_json) and emit SQL → MariaDB
+python3 "$ROOT/scripts/python/nms_import_initial.py" \
+  --initial "$raw_json" \
+  --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
+| mariadb -u "$DB_USER" -D "$DB_NAME" >"$LOGS/initial_import.$stamp.log" 2>&1
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
 python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \

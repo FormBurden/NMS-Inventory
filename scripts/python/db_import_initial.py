@@ -321,9 +321,13 @@ def main() -> None:
 
         for (rid, amt, owner, inv, cont, itype) in walk_items(data, []):
             owner = (owner or "UNKNOWN").upper()
+            owner = owner if owner in ALLOWED_OWNERS else "UNKNOWN"
+
             inv   = (inv or "GENERAL").upper()
             cont  = cont or ""
-            itype = (itype or "Product")
+
+            # Normalize item_type to API expectations (TECH/SUBSTANCE/PRODUCT)
+            itype = {"Technology":"TECH","Substance":"SUBSTANCE","Product":"PRODUCT"}.get(itype or "Product", str(itype)).upper()
 
             # --- filters to drop junk/noise ---
             if owner not in ALLOWED_OWNERS:  # drop UNKNOWN/BASE/PET/etc.

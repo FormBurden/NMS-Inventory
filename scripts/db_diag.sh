@@ -219,6 +219,16 @@ if has_view "v_api_inventory_rows_active"; then
   have_inventory=$(has_column "v_api_inventory_rows_active" "inventory" && echo 1 || echo 0)
   have_resources=$(has_base_table "nms_resources" && echo 1 || echo 0)
 
+  # Friendly note if the active view currently has zero rows (keeps existing sections intact)
+  active_count="$("${MDB[@]}" "SELECT COUNT(*) FROM v_api_inventory_rows_active;" 2>/dev/null | tr -d '[:space:]')"
+  if [ -z "${active_count}" ] || [ "${active_count}" = "0" ]; then
+    {
+      sec "Active view TOP 20 — note"
+      printf "info\n"
+      printf "v_api_inventory_rows_active currently has 0 rows. This usually means no active save_root or no recent import.\n"
+    } >> "${OUTTXT}"
+  fi
+
   if [ "$have_owner" -eq 1 ] && [ "$have_inventory" -eq 1 ]; then
     if [ "$have_resources" -eq 1 ]; then
       sql_section "Active view TOP 20 by amount (owner/inventory/resource with labels)" \
@@ -293,6 +303,126 @@ else
     printf "(view missing)\n"
   } >> "${OUTTXT}"
 fi
+
+# 12) Snapshots without items (safety)
+if has_base_table "nms_snapshots" && has_base_table "nms_items"; then
+  sql_section "Snapshots without items (should be 0)" \
+    "snapshots_without_items" \
+    "SELECT COUNT(*) AS snapshots_without_items
+       FROM nms_snapshots s
+  LEFT JOIN nms_items i ON i.snapshot_id=s.snapshot_id
+      WHERE i.snapshot_id IS NULL;"
+else
+  {
+    sec "Snapshots without items (tables missing)"
+    printf "snapshots_without_items\nN/A\n"
+  } >> "${OUTTXT}"
+fi
+
+# 13) Top 20 item rows by amount for newest snapshot (owner/inventory/resource)
+if has_base_table "nms_items" && has_base_table "nms_snapshots"; then
+  if has_base_table "nms_resources"; then
+    sql_section "Newest snapshot: TOP 20 item rows by amount (with labels)" \
+      "owner_type\tinventory\tresource_id\tlabel\tamount" \
+      "SELECT i.owner_type, i.inventory, i.resource_id,
+              COALESCE(r.display_name,r.name,r.code) AS label,
+              i.amount
+         FROM nms_items i
+    LEFT JOIN nms_resources r ON r.resource_id=i.resource_id
+        WHERE i.snapshot_id=(SELECT MAX(snapshot_id) FROM nms_snapshots)
+     ORDER BY i.amount DESC
+        LIMIT 20;"
+  else
+    sql_section "Newest snapshot: TOP 20 item rows by amount" \
+      "owner_type\tinventory\tresource_id\tamount" \
+      "SELECT i.owner_type, i.inventory, i.resource_id, i.amount
+         FROM nms_items i
+        WHERE i.snapshot_id=(SELECT MAX(snapshot_id) FROM nms_snapshots)
+     ORDER BY i.amount DESC
+        LIMIT 20;"
+  fi
+else
+  {
+    sec "Newest snapshot: TOP 20 item rows by amount (tables missing)"
+    printf "owner_type\tinventory\tresource_id\tamount\nN/A\tN/A\tN/A\t0\n"
+  } >> "${OUTTXT}"
+fi
+
+# 14) Item type distribution for newest snapshot
+if has_base_table "nms_items" && has_base_table "nms_snapshots" && has_column "nms_items" "item_type"; then
+  sql_section "Item type distribution (newest snapshot)" \
+    "item_type\tn_rows\tpercent" \
+    "WITH total AS (
+       SELECT COUNT(*) AS c
+         FROM nms_items
+        WHERE snapshot_id=(SELECT MAX(snapshot_id) FROM nms_snapshots)
+     )
+     SELECT i.item_type,
+            COUNT(*) AS n_rows,
+            ROUND(100.0*COUNT(*)/(SELECT c FROM total),2) AS percent
+       FROM nms_items i
+      WHERE i.snapshot_id=(SELECT MAX(snapshot_id) FROM nms_snapshots)
+   GROUP BY 1
+   ORDER BY n_rows DESC;"
+else
+  {
+    sec "Item type distribution (item_type column missing or tables missing)"
+    printf "item_type\trows\tpercent\nN/A\t0\t0\n"
+  } >> "${OUTTXT}"
+fi
+
+# 15) Missing resource_id frequency (top 20)
+if has_base_table "nms_items" && has_base_table "nms_resources"; then
+  sql_section "Missing resource_id frequency (top 20)" \
+  "resource_id\tfreq" \
+    "SELECT i.resource_id, COUNT(*) AS freq
+       FROM nms_items i
+  LEFT JOIN nms_resources r ON r.resource_id=i.resource_id
+      WHERE r.resource_id IS NULL
+   GROUP BY 1
+   ORDER BY freq DESC
+      LIMIT 20;"
+else
+  {
+    sec "Missing resource_id frequency (nms_resources missing)"
+    printf "resource_id\tfreq\nN/A\t0\n"
+  } >> "${OUTTXT}"
+fi
+
+# 16) Active roots and newest snapshot IDs
+if has_base_table "nms_save_roots" && has_base_table "nms_snapshots" && has_column "nms_save_roots" "is_active"; then
+  sql_section "Save roots (active flag and newest snapshot_id)" \
+    "save_root\tis_active\tnewest_snapshot_id" \
+    "SELECT sr.save_root, sr.is_active,
+            (SELECT MAX(s.snapshot_id)
+               FROM nms_snapshots s
+              WHERE s.save_root=sr.save_root) AS newest_snapshot_id
+       FROM nms_save_roots sr
+   ORDER BY sr.is_active DESC, sr.save_root;"
+else
+  {
+    sec "Save roots (active flag and newest snapshot_id)"
+    printf "save_root\tis_active\tnewest_snapshot_id\nN/A\tN/A\tN/A\n"
+  } >> "${OUTTXT}"
+fi
+
+# 17) Snapshot age (minutes) for newest per root (if created_at exists)
+if has_base_table "nms_snapshots" && has_column "nms_snapshots" "created_at"; then
+  sql_section "Newest snapshot per root (age minutes)" \
+    "save_root\tnewest_snapshot_id\tage_min" \
+    "SELECT s.save_root,
+            MAX(s.snapshot_id) AS newest_snapshot_id,
+            TIMESTAMPDIFF(MINUTE, MAX(s.created_at), NOW()) AS age_min
+       FROM nms_snapshots s
+   GROUP BY s.save_root
+   ORDER BY age_min ASC;"
+else
+  {
+    sec "Newest snapshot per root (age minutes — created_at missing)"
+    printf "save_root\tnewest_snapshot_id\tage_min\nN/A\tN/A\tN/A\n"
+  } >> "${OUTTXT}"
+fi
+
 
 # ---------- Summary ----------
 say "Done. See ${OUTTXT}"

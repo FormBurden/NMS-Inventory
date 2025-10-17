@@ -144,6 +144,58 @@ try {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Fallback: if scoped query returned zero rows, include UNKNOWN owner_type and retry.
+    // This helps when importer produced owner_type=UNKNOWN (e.g., obfuscated JSON paths).
+    if (empty($rows) && !empty($ownerTypes) && !in_array('UNKNOWN', $ownerTypes, true)) {
+        $ownerTypes2 = array_values(array_unique(array_merge($ownerTypes, ['UNKNOWN'])));
+    
+        // Rebuild WHERE + params
+        $placeholders2 = implode(',', array_fill(0, count($ownerTypes2), '?'));
+        $whereOwnerSql2 = "AND a.owner_type IN ($placeholders2)";
+        $params2 = $ownerTypes2;
+    
+        // Rebuild SQL and retry with the augmented owner set
+        if ($wantRecent) {
+        $sql2 = "
+            SELECT
+            $selectCommon,
+            COALESCE(L.max_applied_at, S.max_imported_at) AS changed_at
+            FROM v_api_inventory_rows_active AS a
+            $joinCommon
+            $joinRecent
+            WHERE 1=1
+            $whereOwnerSql2
+            $techFilterSql
+            $groupCommon
+            ORDER BY
+            (COALESCE(L.max_applied_at, S.max_imported_at) IS NULL) ASC,
+            COALESCE(L.max_applied_at, S.max_imported_at) DESC,
+            SUM(a.amount) DESC
+            LIMIT $limit
+        ";
+        } else {
+        $sql2 = "
+            SELECT
+            $selectCommon
+            FROM v_api_inventory_rows_active AS a
+            $joinCommon
+            WHERE 1=1
+            $whereOwnerSql2
+            $techFilterSql
+            $groupCommon
+            ORDER BY SUM(a.amount) DESC
+            LIMIT $limit
+        ";
+        }
+    
+        $stmt = $pdo->prepare($sql2);
+        $stmt->execute($params2);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+        // Reflect the augmented owner_types in the response meta
+        $ownerTypes = $ownerTypes2;
+    }
+    
 
     // Shape the response
     $payload = [
