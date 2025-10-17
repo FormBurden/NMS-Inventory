@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import hashlib
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
@@ -115,8 +116,11 @@ def _normalize_source_mtime(item: Dict[str, Any], decoded_path: str) -> str:
     m = item.get("source_mtime")
     m_str = (m or "").strip() if isinstance(m, str) else ""
     if m_str:
-        return m_str
+        s = m_str.replace("T", " ").split(".", 1)[0]
+        s = re.sub(r"[+-]\d{2}:\d{2}$", "", s).strip()
+        return s
     return _coalesce_datetime(_utc_dt_from_path(decoded_path))
+
 
 def _compose_insert_stmt(
     source_path: str, save_root: str, source_mtime: str, decoded_mtime: str, json_sha256: str

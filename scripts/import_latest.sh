@@ -22,9 +22,32 @@ JSON="$CACHE/${NMS_PROFILE}_${HG_BASE}.json"
 SLOTS="$OUTDIR/${NMS_PROFILE}_slots.csv"
 TOTALS="$OUTDIR/${NMS_PROFILE}_totals.csv"
 
-dbq() { MYSQL_PWD="$NMS_DB_PASS" mariadb \
-  -h "$NMS_DB_HOST" -P "$NMS_DB_PORT" \
-  -u "$NMS_DB_USER" -D "$NMS_DB_NAME" -N -B -e "$1"; }
+dbq() {
+  local sql="$1" attempts=0 max=3 rc=0
+  while (( attempts < max )); do
+    if MYSQL_PWD="$NMS_DB_PASS" mariadb \
+         -h "$NMS_DB_HOST" -P "$NMS_DB_PORT" \
+         -u "$NMS_DB_USER" -D "$NMS_DB_NAME" -N -B -e "$sql"; then
+      return 0
+    fi
+    rc=$?
+    # Detect deadlock 1213 (40001) and retry with backoff
+    if [[ $rc -ne 0 ]]; then
+      # MariaDB CLI prints errors to stderr; capture by a targeted re-run to check message
+      if MYSQL_PWD="$NMS_DB_PASS" mariadb \
+           -h "$NMS_DB_HOST" -P "$NMS_DB_PORT" \
+           -u "$NMS_DB_USER" -D "$NMS_DB_NAME" -N -B -e "$sql" 2>&1 | grep -q "ERROR 1213"; then
+        attempts=$((attempts+1))
+        echo "[import][WARN] Deadlock (1213) on query; retry ${attempts}/${max}..." >&2
+        sleep $((attempts*2))
+        continue
+      fi
+    fi
+    return $rc
+  done
+  return 1
+}
+
 
 
 escape_sql() { printf "%s" "$1" | sed "s/'/''/g"; }
@@ -51,7 +74,7 @@ read -r LAST_ID LAST_SRC LAST_SHA <<<"$(dbq "
   FROM nms_snapshots
   WHERE source_path='$HG_ESC'
   ORDER BY snapshot_id DESC
-  LIMIT 1;")" || true
+  LIMIT 1;")"
 
 if [[ -n "${LAST_ID:-}" && "$LAST_SRC" == "$HG_MTIME" && "$LAST_SHA" == "$JSON_SHA" && "${NMS_IMPORT_FORCE:-0}" != "1" ]]; then
   echo "[import] unchanged (mtime+sha match DB); skipping extract/import."

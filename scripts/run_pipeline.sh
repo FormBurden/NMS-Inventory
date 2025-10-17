@@ -82,7 +82,7 @@ python3 "$ROOT/scripts/python/pipeline/build_manifest.py" \
   --source "$NMS_HG_PATH" \
   --source-mtime "$SRC_MTIME" \
   --decoded "$raw_json" \
-  --out "$ROOT/storage/decoded/_manifest_recent.json" || true
+  --out "$ROOT/storage/decoded/_manifest_recent.json"
 
 
 # --- DB env shim for importer (maps NMS_DB_* -> DB_*) -----------------------
@@ -154,14 +154,14 @@ fi
 mani="$ROOT/storage/decoded/_manifest_recent.json"
 if [[ -s "$mani" ]]; then
   # augment existing manifest: set .items[*].out_json without dropping other fields
-  tmp="$mani.tmp"
+  tmp="$(mktemp -p "$(dirname "$mani")" "$(basename "$mani").XXXXXX")"
   jq --arg out "$full_json" --arg raw "$raw_json" '
     .items = (.items // []) |
     if (.items | length) > 0
       then .items = [ .items[] | .out_json = $out ]
       else {items:[{source_path: $raw, out_json: $out}]}
     end
-  ' "$mani" > "$tmp" && mv "$tmp" "$mani"
+  ' "$mani" > "$tmp" && { [[ -f "$tmp" ]] && mv -f "$tmp" "$mani"; }
 else
   # fallback: minimal but valid shape with both keys
   cat > "$mani" <<EOF
@@ -173,11 +173,29 @@ else
 EOF
 fi
 
+# Import into DB (upsert snapshots, insert nms_items) — with retry on deadlock (1213)
+run_initial_import() {
+  local attempts=0 max=3 rc=0
+  while (( attempts < max )); do
+    if python3 "$ROOT/scripts/python/db_import_initial.py" \
+         --manifest "$mani" \
+       | mariadb -u "$DB_USER" -D "$DB_NAME" \
+         >"$LOGS/initial_import.$stamp.log" 2>&1; then
+      return 0
+    fi
+    rc=$?
+    if grep -q "ERROR 1213" "$LOGS/initial_import.$stamp.log"; then
+      attempts=$((attempts+1))
+      echo "[PIPE][WARN] Deadlock (1213) during initial import; retry ${attempts}/${max}..."
+      sleep $((attempts*2))
+      continue
+    fi
+    return $rc
+  done
+  return 1
+}
 
-# Import into DB (upsert snapshots, insert nms_items)
-python3 "$ROOT/scripts/python/db_import_initial.py" \
-  --manifest "$mani" \
-| mariadb -u "$DB_USER" -D "$DB_NAME" >"$LOGS/initial_import.$stamp.log" 2>&1
+run_initial_import
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
 python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
@@ -187,6 +205,6 @@ python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
   --db-write-ledger --db-env "$DB_SHIM" --db-ledger-table "$LEDGER_TABLE" \
   --session-minutes "$SESSION_MINUTES" \
   ${USE_MTIME:+--use-mtime} \
-  >"$LOGS/ledger.$stamp.log" 2>&1 || true
+  >"$LOGS/ledger.$stamp.log" 2>&1
 
 echo "[PIPE] done."
