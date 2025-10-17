@@ -8,10 +8,10 @@ SET time_zone = '+00:00';
 CREATE TABLE IF NOT EXISTS nms_snapshots (
   snapshot_id        BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   source_path        VARCHAR(1024)   NOT NULL,
-  save_root          VARCHAR(128)    NOT NULL,         -- e.g. st_7656...
-  source_mtime       DATETIME        NOT NULL,         -- file mtime (UTC)
-  decoded_mtime      DATETIME        NULL,             -- when decoded to JSON (UTC)
-  json_sha256        CHAR(64)        NOT NULL,         -- hash of decoded JSON
+  save_root          VARCHAR(128)    NOT NULL,
+  source_mtime       DATETIME        NOT NULL,
+  decoded_mtime      DATETIME        NULL,
+  json_sha256        CHAR(64)        NOT NULL,
   imported_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (snapshot_id),
   UNIQUE KEY uniq_snapshot (source_path, source_mtime),
@@ -23,13 +23,13 @@ CREATE TABLE IF NOT EXISTS nms_snapshots (
 CREATE TABLE IF NOT EXISTS nms_items (
   item_id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   snapshot_id        BIGINT UNSIGNED NOT NULL,
-  owner_type         VARCHAR(32)     NOT NULL,         -- e.g. SUIT, SHIP, FREIGHTER, STORAGE
-  inventory          VARCHAR(32)     NOT NULL,         -- e.g. GENERAL, TECHONLY, CARGO
-  container_id       VARCHAR(64)     NOT NULL DEFAULT '', -- storage index / ship id, etc.
+  owner_type         VARCHAR(32)     NOT NULL,         -- SUIT, SHIP, FREIGHTER, STORAGE...
+  inventory          VARCHAR(32)     NOT NULL,         -- GENERAL, TECHONLY, CARGO
+  container_id       VARCHAR(64)     NOT NULL DEFAULT '',
   slot_index         INT             NOT NULL,         -- position within the container
   resource_id        VARCHAR(128)    NOT NULL,         -- e.g. ^AMMO, ^ANTIMATTER
-  amount             BIGINT          NOT NULL,         -- quantity at that slot
-  item_type          VARCHAR(32)     NOT NULL,         -- "Product" | "Substance" | "Technology" (if known)
+  amount             BIGINT          NOT NULL,
+  item_type          VARCHAR(32)     NOT NULL,         -- Product | Substance | Technology
   created_at         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (item_id),
   CONSTRAINT fk_items_snapshot

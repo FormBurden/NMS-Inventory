@@ -97,4 +97,29 @@ dbq "LOAD DATA LOCAL INFILE '$(printf %q "$SLOTS")'
          item_type=CASE WHEN LEFT(@resource_id,1)='^' THEN 'Substance' ELSE 'Product' END;"
 
 dbq "SELECT COUNT(*) AS rows_loaded FROM nms_items WHERE snapshot_id=${SNAP:-0};"
+
+# --- ensure/activate save_root so UI views populate -----------------------
+# 1) Seed nms_save_roots from distinct roots seen in snapshots (idempotent)
+dbq "INSERT IGNORE INTO nms_save_roots(save_root,is_active)
+     SELECT DISTINCT save_root, 0 FROM nms_snapshots;"
+
+# 2) Choose the newest non-'decoded' root (fallback to NMS_PROFILE)
+NEW_ROOT="$(dbq "SELECT save_root
+                 FROM nms_snapshots
+                 WHERE save_root <> 'decoded'
+                 ORDER BY decoded_mtime DESC, source_mtime DESC, snapshot_id DESC
+                 LIMIT 1;")"
+if [[ -z "$NEW_ROOT" ]]; then NEW_ROOT="$NMS_PROFILE"; fi
+
+# 3) Flip active flag to the chosen root (ensuring it exists)
+dbq "UPDATE nms_save_roots SET is_active=0;"
+dbq "INSERT IGNORE INTO nms_save_roots(save_root,is_active) VALUES ('$NEW_ROOT',0);"
+dbq "UPDATE nms_save_roots SET is_active=1 WHERE save_root='$NEW_ROOT';"
+
+# (tiny sanity print — helpful in logs)
+dbq "SELECT save_root,is_active FROM nms_save_roots
+     ORDER BY is_active DESC, save_root LIMIT 5;"
+echo "[import] active save_root = ${NEW_ROOT}"
+
 echo "[import] done."
+

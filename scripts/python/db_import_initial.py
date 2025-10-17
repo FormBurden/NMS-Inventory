@@ -326,16 +326,16 @@ def main() -> None:
             inv   = (inv or "GENERAL").upper()
             cont  = cont or ""
 
-            # Normalize item_type to API expectations (TECH/SUBSTANCE/PRODUCT)
-            itype = {"Technology":"TECH","Substance":"SUBSTANCE","Product":"PRODUCT"}.get(itype or "Product", str(itype)).upper()
+            # Normalize item_type to DB schema (TitleCase)
+            # DB expects: ENUM('Product','Substance','Technology'), and we filter out Technology later.
+            itype = {"Technology": "Technology", "Substance": "Substance", "Product": "Product"}.get(itype or "Product", "Product")
 
             # --- filters to drop junk/noise ---
             if owner not in ALLOWED_OWNERS:  # drop UNKNOWN/BASE/PET/etc.
                 continue
-            if itype == "Technology":        # GUI wants mats, not tech
+            if itype == "Technology":  # GUI wants mats, not tech
                 continue
-            if not isinstance(amt, int) or amt <= 0:  # ignore empty placeholders
-                continue
+
             # -----------------------------------
 
             slot_index = compute_slot_index(cont, owner, inv, per_key_counter)

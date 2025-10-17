@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS nms_resources (
   KEY idx_is_active (is_active),
   KEY idx_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+ALTER TABLE nms_resources ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1;
+
 
 -- Seed rows for all resource_ids we already have in nms_items so results show up immediately.
 INSERT INTO nms_resources (resource_id, code, is_active)

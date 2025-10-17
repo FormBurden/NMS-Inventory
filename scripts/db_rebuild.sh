@@ -1,114 +1,143 @@
 #!/usr/bin/env bash
-# scripts/db_rebuild.sh
-# Wipe-and-rebuild the NMS-Inventory MariaDB schema using project migrations only.
-# Order: core (0009) -> resources (0010) -> views (0011) -> baseline (0012)
+# Rebuild the DB by applying schema_reset (if present) and all migrations in order.
+# Prompts ONCE for the MariaDB password, then reuses it for every command.
 
-set -euo pipefail
+set -Eeuo pipefail
 
-# --- Config ---------------------------------------------------------------
-ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# --- Resolve repo root (directory containing this script assumed to be scripts/) ---
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+cd "$REPO_ROOT"
 
-# Allow overrides via environment. Defaults per your standard.
-DB_USER="${DB_USER:-nms_user}"
-DB_NAME="${DB_NAME:-nms_database}"
+# --- Load environment (resolve ${NMS_DB_*} indirection if used) ---
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
 
-# Migrations (required)
-MIG_CORE="$ROOT/db/migrations/20251016_0009_create_core_tables.sql"
-MIG_RES="$ROOT/db/migrations/20251016_0010_create_nms_resources.sql"
-MIG_VIEWS="$ROOT/db/migrations/20251016_0011_fix_views_owner_and_ledger.sql"
-MIG_INIT="$ROOT/db/migrations/20251016_0012_create_initial_items.sql"
+# Prefer DB_* if set, else fall back to NMS_DB_*, else defaults
+DB_USER="${DB_USER:-${NMS_DB_USER:-nms_user}}"
+DB_NAME="${DB_NAME:-${NMS_DB_NAME:-nms_database}}"
+DB_PASS="${DB_PASS:-${NMS_DB_PASS:-}}"
 
-# --- Helpers --------------------------------------------------------------
-die() { echo "[ERR] $*" >&2; exit 1; }
+# Choose your default charset/collation (matches project)
+DB_CHARSET="${DB_CHARSET:-utf8mb4}"
+DB_COLLATE="${DB_COLLATE:-utf8mb4_unicode_ci}"
 
-need_file() {
-  local f="$1"
-  [[ -f "$f" ]] || die "Missing required migration: $f"
+MIG_DIR="db/migrations"
+if [[ ! -d "$MIG_DIR" ]]; then
+  echo "[ERR] Missing migrations directory: $MIG_DIR" >&2
+  exit 1
+fi
+# Track results for summary
+MIG_OK=()
+MIG_FAIL=()
+
+
+# --- Prompt once for password; create a temporary defaults file ---
+if [[ -z "${DB_PASS}" ]]; then
+  read -rs -p "Enter MariaDB password for user '${DB_USER}': " DB_PASS
+  echo
+fi
+
+CRED_FILE="$(mktemp -t nms-maria-XXXXXX.cnf)"
+cleanup() {
+  if command -v shred >/dev/null 2>&1; then
+    shred -u "$CRED_FILE" || rm -f "$CRED_FILE"
+  else
+    rm -f "$CRED_FILE"
+  fi
+}
+trap cleanup EXIT
+
+cat >"$CRED_FILE" <<EOF
+[client]
+user=${DB_USER}
+password=${DB_PASS}
+EOF
+chmod 600 "$CRED_FILE"
+
+# --- Helpers ---
+run_sql_global() {
+  local sql="$1"
+  mariadb --defaults-extra-file="$CRED_FILE" -N -e "$sql"
 }
 
-sql() {
-  # Usage: sql "MULTI-LINE SQL"
-  local q="$1"
-  echo "$q" | mariadb -u "$DB_USER" -p -D "$DB_NAME" -N -e "" || die "SQL failed"
+run_sql_db_file() {
+  local sql_file="$1"
+  if [[ ! -f "$sql_file" ]]; then
+    echo "[WARN] SQL file not found: $sql_file" >&2
+    return 0
+  fi
+  echo "[DB] Applying: ${sql_file}"
+  if mariadb --defaults-extra-file="$CRED_FILE" -D "$DB_NAME" -N -e "SOURCE ${sql_file}"; then
+    MIG_OK+=("$sql_file")
+  else
+    MIG_FAIL+=("$sql_file")
+    return 1
+  fi
 }
 
-source_sql() {
-  local f="$1"
-  need_file "$f"
-  echo "[migrate] SOURCE $(basename "$f")"
-  mariadb -u "$DB_USER" -p -D "$DB_NAME" -N -e "SOURCE $f" || die "SOURCE failed: $f"
+
+run_sql_db() {
+  local stmt="$1"
+  mariadb --defaults-extra-file="$CRED_FILE" -D "$DB_NAME" -N -e "$stmt"
 }
 
-show_schema() {
-  echo "[info] Tables/Views after migrate:"
-  mariadb -u "$DB_USER" -p -D "$DB_NAME" -N -e "SHOW FULL TABLES WHERE Table_type IN ('VIEW','BASE TABLE')"
+ensure_db_exists() {
+  echo "[DB] Ensuring database exists: ${DB_NAME} (${DB_CHARSET} / ${DB_COLLATE})"
+  run_sql_global "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET ${DB_CHARSET} COLLATE ${DB_COLLATE};"
 }
 
-usage() {
-  cat <<USAGE
-Usage: $(basename "$0") [--wipe|--no-wipe]
+echo "[DB] Rebuild starting for database: ${DB_NAME} (user: ${DB_USER})"
+echo "[DB] Migrations dir: ${MIG_DIR}"
 
-Options:
-  --wipe     Drop project views and tables, then re-create schema (default)
-  --no-wipe  Do NOT drop anything; just apply migrations in order
+# 0) Ensure DB exists BEFORE running schema_reset (so it can DROP/CREATE inside it)
+ensure_db_exists
 
-Env overrides:
-  DB_USER (default: nms_user)
-  DB_NAME (default: nms_database)
+# 1) schema_reset.sql (run WITH -D so DROP VIEW/TABLE etc. have a selected DB)
+if [[ -f "${MIG_DIR}/schema_reset.sql" ]]; then
+  echo "[DB] Applying (db-scoped): ${MIG_DIR}/schema_reset.sql"
+  run_sql_db_file "${MIG_DIR}/schema_reset.sql"
+fi
 
-This script always prompts for the MariaDB password via -p (no password is echoed).
-USAGE
-}
-
-# --- Args -----------------------------------------------------------------
-DO_WIPE=1
-if [[ "${1:-}" == "--no-wipe" ]]; then
-  DO_WIPE=0
-elif [[ "${1:-}" == "--wipe" ]] || [[ -z "${1:-}" ]]; then
-  DO_WIPE=1
-elif [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage; exit 0
+# 2) Apply all other migrations in lexical order (with -D "${DB_NAME}")
+# Collect migrations in lexical order, EXCLUDING schema_reset.sql (already applied above)
+mapfile -t SQLS < <(ls -1 "${MIG_DIR}"/*.sql 2>/dev/null | sort | grep -v -E '/schema_reset\.sql$')
+if [[ ${#SQLS[@]} -eq 0 ]]; then
+  echo "[WARN] No *.sql migrations found in ${MIG_DIR}"
 else
-  usage; die "Unknown option: $1"
+  for f in "${SQLS[@]}"; do
+    run_sql_db_file "$f"
+  done
 fi
 
-echo "[info] ROOT=$ROOT"
-echo "[info] DB_USER=$DB_USER DB_NAME=$DB_NAME"
-echo "[info] Mode: $([[ $DO_WIPE -eq 1 ]] && echo wipe || echo no-wipe)"
 
-# Ensure migrations exist
-need_file "$MIG_CORE"
-need_file "$MIG_RES"
-need_file "$MIG_VIEWS"
-need_file "$MIG_INIT"
+# 3) Quick sanity readouts (tolerate failures)
+echo "[DB] Rebuild complete. Listing views and tables:"
+run_sql_db "SHOW FULL TABLES WHERE Table_type IN ('VIEW','BASE TABLE');" || true
 
-# --- Wipe (optional) ------------------------------------------------------
-if [[ $DO_WIPE -eq 1 ]]; then
-  echo "[wipe] Dropping views if they exist..."
-  sql "DROP VIEW IF EXISTS
-    v_api_inventory_rows_active,
-    v_api_inventory_rows_active_combined,
-    v_api_inventory_rows_by_root,
-    v_latest_snapshot_by_root;"
-
-  echo "[wipe] Dropping tables if they exist..."
-  sql "SET FOREIGN_KEY_CHECKS=0;
-       DROP TABLE IF EXISTS
-         nms_ledger_deltas,
-         nms_initial_items,
-         nms_items,
-         nms_resources,
-         nms_snapshots,
-         nms_save_roots,
-         nms_settings;
-       SET FOREIGN_KEY_CHECKS=1;"
+# 4) Summary
+echo
+echo "[DB] Migration summary:"
+if (( ${#MIG_OK[@]} > 0 )); then
+  echo "  [OK] ${#MIG_OK[@]} file(s):"
+  for f in "${MIG_OK[@]}"; do
+    echo "    • $f"
+  done
+else
+  echo "  [OK] 0 file(s)"
 fi
 
-# --- Apply in correct order ----------------------------------------------
-source_sql "$MIG_CORE"   # 0009 core tables
-source_sql "$MIG_RES"    # 0010 resources (safe if empty)
-source_sql "$MIG_VIEWS"  # 0011 views and owner/ledger deps
-source_sql "$MIG_INIT"   # 0012 initial baseline table
+if (( ${#MIG_FAIL[@]} > 0 )); then
+  echo "  [FAIL] ${#MIG_FAIL[@]} file(s):"
+  for f in "${MIG_FAIL[@]}"; do
+    echo "    • $f"
+  done
+  echo "[ERR] One or more migrations failed."
+  exit 1
+fi
 
-show_schema
-echo "[done] DB schema is ready."
+echo "[OK] Done."
