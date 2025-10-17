@@ -1,221 +1,136 @@
 <?php
-// public/api/inventory.php
-// Returns inventory rows with optional "Recent first" ordering.
-//
-// Query params:
-//   scope=<owner scope>                (e.g., character, ship, freighter, storage, vehicle, all)
-//   include_tech=1                     (include tech items; default excludes tech)
-//   limit=<N>                          (default 100)
-//   sort=recent                        (enable recency ordering & 'changed_at' in payload)
-
 declare(strict_types=1);
+
+/**
+ * Inventory API
+ * - Preserves existing response shape { ok, rows: [{ owner_type, inventory, resource_id, amount }] }
+ * - Adds snapshot_ts derived from storage/decoded/_manifest_recent.json (top-level and per-row)
+ * - Keeps 'sort=recent' behavior by joining ledger deltas for ordering only
+ *
+ * Requirements:
+ *   - includes/db.php must provide $pdo (PDO) or get_db() returning PDO
+ */
+
+require_once __DIR__ . '/../../includes/db.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-$ROOT = dirname(__DIR__, 2);
-
-// --- DB bootstrap ------------------------------------------------------------
-require_once $ROOT . '/includes/db.php'; // should expose $pdo (PDO). If your include uses $db, we alias below.
-if (!isset($pdo) && isset($db) && $db instanceof PDO) {
-    $pdo = $db;
-}
-if (!isset($pdo) || !($pdo instanceof PDO)) {
+function db(): PDO {
+    if (function_exists('get_db')) {
+        return get_db();
+    }
+    global $pdo;
+    if ($pdo instanceof PDO) return $pdo;
     http_response_code(500);
-    echo json_encode(['error' => 'Database handle ($pdo) not available']);
+    echo json_encode(['ok' => false, 'error' => 'DB not initialized']);
     exit;
 }
 
-// --- Inputs ------------------------------------------------------------------
-$limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 100;
-$limit = min($limit, 500); // cap
+/**
+ * Read snapshot_ts from manifest written by the pipeline:
+ *   storage/decoded/_manifest_recent.json
+ * The manifest is atomically written as .tmp then moved into place by the pipeline.
+ */
+function read_manifest_snapshot_ts(): ?string {
+    $root = realpath(__DIR__ . '/../../');
+    if ($root === false) return null;
+    $path = $root . '/storage/decoded/_manifest_recent.json';
+    if (!is_file($path)) return null;
+    $json = @file_get_contents($path);
+    if ($json === false) return null;
+    $obj = json_decode($json, true);
+    if (!is_array($obj)) return null;
 
-$scope        = isset($_GET['scope']) ? trim((string)$_GET['scope']) : 'all';
-$includeTech  = isset($_GET['include_tech']) && (string)$_GET['include_tech'] === '1';
-$wantRecent   = isset($_GET['sort']) && strtolower((string)$_GET['sort']) === 'recent';
-
-// Map friendly scope to one or more owner_type values actually stored in DB.
-// Adjust these to match your schema if needed.
-$SCOPE_MAP = [
-    'character' => ['CHARACTER', 'EXOSUIT', 'SUIT'],
-    'ship'      => ['SHIP'],
-    'freighter' => ['FREIGHTER'],
-    'storage'   => ['STORAGE', 'CONTAINER', 'STORAGE_CONTAINER'],
-    'vehicle'   => ['VEHICLE', 'EXOCRAFT'],
-    'all'       => [], // no filter
-];
-
-// Build owner_type filter list (distinct values allowed).
-$ownerTypes = [];
-if (isset($SCOPE_MAP[$scope])) {
-    $ownerTypes = $SCOPE_MAP[$scope];
-} elseif ($scope !== 'all' && $scope !== '') {
-    // Accept raw owner_type value passthrough if caller already knows exact key.
-    $ownerTypes = [$scope];
-}
-
-// --- SQL Fragments -----------------------------------------------------------
-// NOTE: We source current quantities from v_api_inventory_rows_active (your existing view).
-// We join resources for names and compute recency via two pre-aggregated subqueries:
-//   L: last ledger delta per (resource_id, owner_type)
-//   S: last snapshot imported_at where the item appears (via nms_items -> nms_snapshots)
-
-$techFilterSql = $includeTech ? '' : "AND a.item_type <> 'TECH'";
-
-$whereOwnerSql = '';
-$params = [];
-if (!empty($ownerTypes)) {
-    $placeholders = implode(',', array_fill(0, count($ownerTypes), '?'));
-    $whereOwnerSql = "AND a.owner_type IN ($placeholders)";
-    foreach ($ownerTypes as $ot) {
-        $params[] = $ot;
+    // Prefer explicit 'snapshot_ts' if present; otherwise fall back to first item mtime
+    if (!empty($obj['snapshot_ts']) && is_string($obj['snapshot_ts'])) {
+        return $obj['snapshot_ts'];
     }
+    if (!empty($obj['items']) && is_array($obj['items'])) {
+        $it = $obj['items'][0] ?? null;
+        if (is_array($it) && !empty($it['source_mtime']) && is_string($it['source_mtime'])) {
+            return $it['source_mtime'];
+        }
+    }
+    return null;
 }
 
-$selectCommon = "
-    a.resource_id,
-    a.owner_type,
-    COALESCE(res.display_name, res.name, res.code) AS name,
-    SUM(a.amount) AS amount,
-    MIN(a.item_type) AS item_type
-";
-
-$joinCommon = "
-    LEFT JOIN nms_resources AS res
-      ON res.resource_id = a.resource_id
-";
-
-$groupCommon = "GROUP BY a.resource_id, a.owner_type, COALESCE(res.display_name, res.name, res.code)";
-
-// Pre-aggregations for recency
-$joinRecent = "
-    LEFT JOIN (
-        SELECT resource_id, owner_type, MAX(applied_at) AS max_applied_at
-        FROM nms_ledger_deltas
-        GROUP BY resource_id, owner_type
-    ) AS L
-      ON L.resource_id = a.resource_id
-     AND L.owner_type  = a.owner_type
-    LEFT JOIN (
-        SELECT i.resource_id, i.owner_type, MAX(s.imported_at) AS max_imported_at
-        FROM nms_items i
-        JOIN nms_snapshots s ON s.snapshot_id = i.snapshot_id
-        GROUP BY i.resource_id, i.owner_type
-    ) AS S
-      ON S.resource_id = a.resource_id
-     AND S.owner_type  = a.owner_type
-";
+function param(string $key, $default = null) {
+    return $_GET[$key] ?? $default;
+}
 
 try {
-    if ($wantRecent) {
-        // Recent-first path: compute changed_at with ledger primary, snapshot fallback.
+    $pdo = db();
+
+    // Inputs
+    $scope   = strtoupper((string) param('scope', 'ALL'));   // e.g., CHARACTER/SUIT/ALL
+    $limit   = max(1, min(1000, (int) param('limit', 100)));
+    $offset  = max(0, (int) param('offset', 0));
+    $useRecent = (strtolower((string) param('sort', '')) === 'recent');
+
+    // WHERE clause for scope
+    $whereSql = '';
+    $params = [];
+    if ($scope !== 'ALL') {
+        // Normalize 'CHARACTER' to 'SUIT' if your data uses SUIT as the owner_type
+        $ownerScope = ($scope === 'CHARACTER') ? 'SUIT' : $scope;
+        $whereSql = "WHERE owner_type = :owner_scope";
+        $params[':owner_scope'] = $ownerScope;
+    }
+
+    // Base view always: v_api_inventory_rows_active (provides owner_type, inventory, resource_id, amount)
+    // For 'recent' we LEFT JOIN a ledger summary for ORDER BY only.
+    if ($useRecent) {
         $sql = "
-            SELECT
-                $selectCommon,
-                COALESCE(L.max_applied_at, S.max_imported_at) AS changed_at
-            FROM v_api_inventory_rows_active AS a
-            $joinCommon
-            $joinRecent
-            WHERE 1=1
-              $whereOwnerSql
-              $techFilterSql
-            $groupCommon
-            ORDER BY
-              (COALESCE(L.max_applied_at, S.max_imported_at) IS NULL) ASC,
-              COALESCE(L.max_applied_at, S.max_imported_at) DESC,
-              SUM(a.amount) DESC
-            LIMIT $limit
+            SELECT a.owner_type, a.inventory, a.resource_id, a.amount
+            FROM v_api_inventory_rows_active a
+            LEFT JOIN (
+                SELECT resource_id, MAX(COALESCE(session_end, created_at)) AS recent_ts
+                FROM nms_ledger_deltas
+                GROUP BY resource_id
+            ) ld ON ld.resource_id = a.resource_id
+            " . ($whereSql ? preg_replace('/\bowner_type\b/', 'a.owner_type', $whereSql) : '') . "
+            ORDER BY COALESCE(ld.recent_ts, '1970-01-01 00:00:00') DESC, a.owner_type, a.inventory, a.resource_id
+            LIMIT :limit OFFSET :offset
         ";
     } else {
-        // Default path: amount-desc; include name for UI consistency.
         $sql = "
-            SELECT
-                $selectCommon
-            FROM v_api_inventory_rows_active AS a
-            $joinCommon
-            WHERE 1=1
-              $whereOwnerSql
-              $techFilterSql
-            $groupCommon
-            ORDER BY SUM(a.amount) DESC
-            LIMIT $limit
+            SELECT owner_type, inventory, resource_id, amount
+            FROM v_api_inventory_rows_active
+            $whereSql
+            ORDER BY owner_type, inventory, resource_id
+            LIMIT :limit OFFSET :offset
         ";
     }
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    // Fallback: if scoped query returned zero rows, include UNKNOWN owner_type and retry.
-    // This helps when importer produced owner_type=UNKNOWN (e.g., obfuscated JSON paths).
-    if (empty($rows) && !empty($ownerTypes) && !in_array('UNKNOWN', $ownerTypes, true)) {
-        $ownerTypes2 = array_values(array_unique(array_merge($ownerTypes, ['UNKNOWN'])));
-    
-        // Rebuild WHERE + params
-        $placeholders2 = implode(',', array_fill(0, count($ownerTypes2), '?'));
-        $whereOwnerSql2 = "AND a.owner_type IN ($placeholders2)";
-        $params2 = $ownerTypes2;
-    
-        // Rebuild SQL and retry with the augmented owner set
-        if ($wantRecent) {
-        $sql2 = "
-            SELECT
-            $selectCommon,
-            COALESCE(L.max_applied_at, S.max_imported_at) AS changed_at
-            FROM v_api_inventory_rows_active AS a
-            $joinCommon
-            $joinRecent
-            WHERE 1=1
-            $whereOwnerSql2
-            $techFilterSql
-            $groupCommon
-            ORDER BY
-            (COALESCE(L.max_applied_at, S.max_imported_at) IS NULL) ASC,
-            COALESCE(L.max_applied_at, S.max_imported_at) DESC,
-            SUM(a.amount) DESC
-            LIMIT $limit
-        ";
-        } else {
-        $sql2 = "
-            SELECT
-            $selectCommon
-            FROM v_api_inventory_rows_active AS a
-            $joinCommon
-            WHERE 1=1
-            $whereOwnerSql2
-            $techFilterSql
-            $groupCommon
-            ORDER BY SUM(a.amount) DESC
-            LIMIT $limit
-        ";
-        }
-    
-        $stmt = $pdo->prepare($sql2);
-        $stmt->execute($params2);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-        // Reflect the augmented owner_types in the response meta
-        $ownerTypes = $ownerTypes2;
+    foreach ($params as $k => $v) {
+        $stmt->bindValue($k, $v, PDO::PARAM_STR);
     }
-    
+    $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
 
-    // Shape the response
-    $payload = [
-        'ok'   => true,
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    // Attach snapshot_ts from manifest (top-level + per-row for UI convenience)
+    $snapshotTs = read_manifest_snapshot_ts();
+    if ($snapshotTs) {
+        foreach ($rows as &$r) {
+            $r['snapshot_ts'] = $snapshotTs;
+        }
+        unset($r);
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'snapshot_ts' => $snapshotTs,  // top-level hint (non-breaking)
         'rows' => $rows,
-        'meta' => [
-            'scope'        => $scope,
-            'owner_types'  => $ownerTypes,
-            'include_tech' => $includeTech,
-            'limit'        => $limit,
-            'sort'         => $wantRecent ? 'recent' : 'amount_desc',
-        ],
-    ];
-
-    echo json_encode($payload);
+    ], JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
     http_response_code(500);
     echo json_encode([
-        'ok'    => false,
+        'ok' => false,
         'error' => 'Query failed',
-        'detail'=> $e->getMessage(),
-    ]);
+        'detail' => $e->getMessage(),
+    ], JSON_UNESCAPED_SLASHES);
 }

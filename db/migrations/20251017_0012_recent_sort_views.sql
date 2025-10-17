@@ -1,10 +1,10 @@
--- 0012: Recent-first views (idempotent, uses existing snapshot timestamps)
+-- 0012: Recent-first views (idempotent)
 
--- keep creation order stable
 SET @OLD_SQL_NOTES=@@sql_notes; SET sql_notes=0;
 
+-- Drop in safe order so re-sourcing never fails
+DROP VIEW IF EXISTS v_api_inventory_rows_recent;
 DROP VIEW IF EXISTS v_item_recent_seen;
-SELECT s.snapshot_id, s.save_root, s.decoded_mtime AS created_at
 DROP VIEW IF EXISTS v_active_snapshots;
 
 -- Active snapshots for the currently active save_root
@@ -17,7 +17,7 @@ JOIN nms_save_roots r
   ON r.save_root COLLATE utf8mb4_unicode_ci = s.save_root COLLATE utf8mb4_unicode_ci
 WHERE r.is_active = 1;
 
--- Recent "seen" timestamp per owner/inventory/resource based on most recent snapshot time
+-- Most recent seen time per owner/inventory/resource across all snapshots
 CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW v_item_recent_seen AS
 SELECT i.owner_type,
        i.inventory,
@@ -28,7 +28,7 @@ JOIN nms_snapshots s
   ON s.snapshot_id = i.snapshot_id
 GROUP BY i.owner_type, i.inventory, i.resource_id;
 
--- Join recent_ts onto the active inventory rows; the UI can ORDER BY recent_ts DESC when sort=recent
+-- Active rows + their recent_ts for "Recent first" ordering
 CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW v_api_inventory_rows_recent AS
 SELECT a.owner_type,
        a.inventory,

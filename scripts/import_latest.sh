@@ -121,9 +121,5 @@ dbq "SELECT save_root,is_active FROM nms_save_roots
      ORDER BY is_active DESC, save_root LIMIT 5;"
 echo "[import] active save_root = ${NEW_ROOT}"
 
-dbq "SOURCE db/migrations/20251017_0012_recent_sort_views.sql"
-
-echo "[import] applied recent-sort views"
-
 echo "[import] done."
 

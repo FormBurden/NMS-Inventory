@@ -129,11 +129,54 @@ if [[ -z "${MYSQL_PWD:-}" && -z "$DB_PASS" && -z "${NMS_NONINTERACTIVE:-}" && -t
   export MYSQL_PWD
 fi
 
+# Create/augment the manifest db_import_initial.py expects:
+#  - keep existing fields from build_manifest.py (source_path, save_root, *_mtime, json_sha256)
+#  - add out_json pointing to our full-parse file
+base_name="$(basename -- "$clean_json" .clean.json)"
+raw_json="${raw_json:-$ROOT/storage/decoded/${base_name}.json}"
+full_json="$ROOT/output/fullparse/${base_name}.full.json"
 
-# Build a proper manifest (items[] with out_json) and emit SQL → MariaDB
-python3 "$ROOT/scripts/python/nms_import_initial.py" \
-  --initial "$raw_json" \
-  --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
+# --- full-parse -------------------------------------------------------------
+# Ensure destination directory exists and produce the out_json file the importer expects
+mkdir -p "$ROOT/output/fullparse"
+
+echo "[PIPE] full-parse -> $full_json"
+python3 -m scripts.python.nms_fullparse \
+  -i "$raw_json" \
+  -o "$full_json" \
+  >"$LOGS/fullparse.$stamp.log" 2>&1 || true
+
+# If full-parse failed to produce output, warn (DB import uses out_json from manifest)
+if [[ ! -s "$full_json" ]]; then
+  echo "[warn] full-parse did not create: $full_json"
+fi
+
+mani="$ROOT/storage/decoded/_manifest_recent.json"
+if [[ -s "$mani" ]]; then
+  # augment existing manifest: set .items[*].out_json without dropping other fields
+  tmp="$mani.tmp"
+  jq --arg out "$full_json" --arg raw "$raw_json" '
+    .items = (.items // []) |
+    if (.items | length) > 0
+      then .items = [ .items[] | .out_json = $out ]
+      else {items:[{source_path: $raw, out_json: $out}]}
+    end
+  ' "$mani" > "$tmp" && mv "$tmp" "$mani"
+else
+  # fallback: minimal but valid shape with both keys
+  cat > "$mani" <<EOF
+{
+  "items": [
+    { "source_path": "$raw_json", "out_json": "$full_json" }
+  ]
+}
+EOF
+fi
+
+
+# Import into DB (upsert snapshots, insert nms_items)
+python3 "$ROOT/scripts/python/db_import_initial.py" \
+  --manifest "$mani" \
 | mariadb -u "$DB_USER" -D "$DB_NAME" >"$LOGS/initial_import.$stamp.log" 2>&1
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
