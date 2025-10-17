@@ -6,7 +6,7 @@ DROP VIEW IF EXISTS v_active_snapshot_ts;
 CREATE ALGORITHM=UNDEFINED SQL SECURITY DEFINER VIEW v_active_snapshot_ts AS
 SELECT
   s.save_root,
-  MAX(s.snapshot_ts) AS snapshot_ts
+  MAX(s.decoded_mtime) AS snapshot_ts
 FROM nms_snapshots s
 JOIN nms_save_roots r
   ON r.save_root COLLATE utf8mb4_unicode_ci = s.save_root COLLATE utf8mb4_unicode_ci

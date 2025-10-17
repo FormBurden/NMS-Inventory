@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS nms_ledger_deltas (
   PRIMARY KEY (id),
   KEY idx_ledger_rt_time (resource_id, owner_type, applied_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+-- Harden existing installs that predate 'applied_at'
+ALTER TABLE nms_ledger_deltas
+  ADD COLUMN IF NOT EXISTS applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
 
 -- 1) Drop conflicting views to ensure clean create order
 DROP VIEW IF EXISTS v_api_inventory_rows_active_combined;
@@ -27,7 +31,7 @@ FROM (
   SELECT
     save_root,
     snapshot_id,
-    ROW_NUMBER() OVER (PARTITION BY save_root ORDER BY imported_at DESC, snapshot_id DESC) AS rn
+    ROW_NUMBER() OVER (PARTITION BY save_root ORDER BY decoded_mtime DESC, snapshot_id DESC) AS rn
   FROM nms_snapshots
 ) x
 WHERE rn = 1;

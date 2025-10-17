@@ -82,24 +82,12 @@ try {
     if ($useRecent) {
         $sql = "
             SELECT a.owner_type, a.inventory, a.resource_id, a.amount
-            FROM v_api_inventory_rows_active a
-            LEFT JOIN (
-                SELECT resource_id, MAX(COALESCE(session_end, created_at)) AS recent_ts
-                FROM nms_ledger_deltas
-                GROUP BY resource_id
-            ) ld ON ld.resource_id = a.resource_id
+            FROM v_api_inventory_rows_recent a
             " . ($whereSql ? preg_replace('/\bowner_type\b/', 'a.owner_type', $whereSql) : '') . "
-            ORDER BY COALESCE(ld.recent_ts, '1970-01-01 00:00:00') DESC, a.owner_type, a.inventory, a.resource_id
+            ORDER BY a.recent_ts DESC, a.owner_type, a.inventory, a.resource_id
             LIMIT :limit OFFSET :offset
         ";
-    } else {
-        $sql = "
-            SELECT owner_type, inventory, resource_id, amount
-            FROM v_api_inventory_rows_active
-            $whereSql
-            ORDER BY owner_type, inventory, resource_id
-            LIMIT :limit OFFSET :offset
-        ";
+
     }
 
     $stmt = $pdo->prepare($sql);

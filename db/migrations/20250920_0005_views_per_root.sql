@@ -5,7 +5,7 @@ FROM (
   SELECT
     save_root,
     snapshot_id,
-    ROW_NUMBER() OVER (PARTITION BY save_root ORDER BY imported_at DESC, snapshot_id DESC) AS rn
+    ROW_NUMBER() OVER (PARTITION BY save_root ORDER BY decoded_mtime DESC, snapshot_id DESC) AS rn
   FROM nms_snapshots
 ) x
 WHERE rn = 1;
