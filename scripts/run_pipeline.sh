@@ -116,11 +116,15 @@ if [[ -z "${MYSQL_PWD:-}" && -z "$DB_PASS" && -z "${NMS_NONINTERACTIVE:-}" && -t
 fi
 
 
-# Build a proper manifest (items[] with out_json) and emit SQL → MariaDB
-python3 "$ROOT/scripts/python/nms_import_initial.py" \
-  --initial "$raw_json" \
-  --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
-| mariadb -u "$DB_USER" -D "$DB_NAME" >"$LOGS/initial_import.$stamp.log" 2>&1
+# Initial import (direct DB) using ledger v3 helper
+python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
+  --initial \
+  --saves "$raw_json" \
+  --db-import \
+  --db-env "$DB_SHIM" \
+  --db-table "$INITIAL_TABLE" \
+  ${USE_MTIME:+--use-mtime} \
+  >"$LOGS/initial_import.$stamp.log" 2>&1
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
 python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
