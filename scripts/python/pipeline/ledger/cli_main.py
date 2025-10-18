@@ -65,10 +65,7 @@ def _emit_initial_sql(json_path: Path, include_tech: bool = False, use_mtime: bo
     if not totals:
         return "/* no snapshot rows generated */\n"
 
-    ts = canonical_ts_from_file(json_path, use_mtime=use_mtime)
-    ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
-
-    # Normalize labels to likely DB-enum/canonical forms
+    # Normalize to likely DB enum/canonical labels
     def norm_owner(s: str) -> str:
         s = (s or "").strip().lower()
         if s == "character": return "Character"
@@ -84,7 +81,7 @@ def _emit_initial_sql(json_path: Path, include_tech: bool = False, use_mtime: bo
         if s == "cargo": return "Cargo"
         return "General"
 
-    # Build VALUES for nms_items and a distinct set of resource_ids (for FK safety)
+    # Build VALUES for nms_items and collect distinct resource_ids for FK safety
     item_rows = []
     resource_ids = set()
     for (owner_type, inventory, resource_id), amt in sorted(totals.items()):
@@ -94,11 +91,12 @@ def _emit_initial_sql(json_path: Path, include_tech: bool = False, use_mtime: bo
         item_rows.append(f"(@sid, '{owner_sql}', '{inv_sql}', '{rid_sql}', {int(amt)})")
         resource_ids.add(rid_sql)
 
-    # Preload resources to satisfy FK (no-ops for existing rows)
     resources_values = ",\n".join([f"('{rid}')" for rid in sorted(resource_ids)])
+    # Required field in your schema:
+    source_path_sql = _escape_sql(json_path.as_posix())
 
     sql = []
-    # Be robust to FK orderings; re-enable after commit
+    # Be resilient to FK ordering; re-enable checks after COMMIT
     sql.append("SET FOREIGN_KEY_CHECKS=0;")
     sql.append("START TRANSACTION;")
 
@@ -106,10 +104,14 @@ def _emit_initial_sql(json_path: Path, include_tech: bool = False, use_mtime: bo
         sql.append("INSERT IGNORE INTO nms_resources(resource_id) VALUES")
         sql.append(resources_values + ";")
 
-    sql.append(f"INSERT INTO nms_snapshots(snapshot_ts) VALUES ('{ts_str}');")
+    # Insert snapshot row with explicit column list to satisfy NOT NULL/NO DEFAULT columns
+    # Only setting source_path here; any other columns rely on DB defaults/triggers.
+    sql.append(f"INSERT INTO nms_snapshots(source_path) VALUES ('{source_path_sql}');")
     sql.append("SET @sid := LAST_INSERT_ID();")
+
     sql.append("INSERT INTO nms_items(snapshot_id, owner_type, inventory, resource_id, amount) VALUES")
     sql.append(",\n".join(item_rows) + ";")
+
     sql.append("COMMIT;")
     sql.append("SET FOREIGN_KEY_CHECKS=1;")
     return "\n".join(sql) + "\n"
