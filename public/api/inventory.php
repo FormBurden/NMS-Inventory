@@ -77,17 +77,23 @@ try {
         $params[':owner_scope'] = $ownerScope;
     }
 
-    // Base view always: v_api_inventory_rows_active (provides owner_type, inventory, resource_id, amount)
-    // For 'recent' we LEFT JOIN a ledger summary for ORDER BY only.
+    // Build the query without table aliases so WHERE clauses remain simple.
     if ($useRecent) {
         $sql = "
-            SELECT a.owner_type, a.inventory, a.resource_id, a.amount
-            FROM v_api_inventory_rows_recent a
-            " . ($whereSql ? preg_replace('/\bowner_type\b/', 'a.owner_type', $whereSql) : '') . "
-            ORDER BY a.recent_ts DESC, a.owner_type, a.inventory, a.resource_id
+            SELECT owner_type, inventory, resource_id, amount
+            FROM v_api_inventory_rows_recent
+            " . ($whereSql ?: "") . "
+            ORDER BY recent_ts DESC, owner_type, inventory, resource_id
             LIMIT :limit OFFSET :offset
         ";
-
+    } else {
+        $sql = "
+            SELECT owner_type, inventory, resource_id, amount
+            FROM v_api_inventory_rows_active
+            " . ($whereSql ?: "") . "
+            ORDER BY owner_type, inventory, resource_id
+            LIMIT :limit OFFSET :offset
+        ";
     }
 
     $stmt = $pdo->prepare($sql);
