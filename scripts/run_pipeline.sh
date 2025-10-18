@@ -107,20 +107,33 @@ python3 "$ROOT/scripts/python/pipeline/build_manifest.py" \
 run_initial_import() {
   local tmp_sql="$LOGS/initial_import.$stamp.sql"
   # Generate SQL from the latest manifest (will reference fullparse outputs)
-  if ! python3 "$ROOT/scripts/python/pipeline/ledger/cli_run.py" initial_import \
-        --db-name "$DB_NAME" --manifest "$ROOT/storage/decoded/_manifest_recent.json"; then
-        --manifest "$ROOT/storage/decoded/_manifest_recent.json"; then
-        > "$tmp_sql" 2>"$LOGS/initial_import.$stamp.log.py";
+  if ! python3 -m scripts.python.pipeline.ledger.cli_main initial_import \
+      --db-name "$DB_NAME" \
+      --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
+      >"$tmp_sql" 2>"$LOGS/initial_import.$stamp.log.py"; then
     echo "[PIPE][ERROR] db_import_initial.py failed; see $LOGS/initial_import.$stamp.log.py"
     return 1
   fi
 
-  # Guard: abort if the generator produced the 'no snapshot rows' sentinel
+  # Guard: abort if the generator produced the 'no snapshot rows' sentinel OR empty/valueless SQL
   if grep -q "no snapshot rows generated" "$tmp_sql"; then
     echo "[PIPE][ERROR] Import SQL contains no rows (fullparse likely missing or empty)."
     echo "  See: $LOGS/fullparse_present.$stamp.log and $LOGS/initial_import.$stamp.log.py"
     return 1
   fi
+  # Also guard against an empty file
+  if [ ! -s "$tmp_sql" ]; then
+    echo "[PIPE][ERROR] Import SQL file is empty."
+    echo "  See: $LOGS/fullparse_present.$stamp.log and $LOGS/initial_import.$stamp.log.py"
+    return 1
+  fi
+  # And guard against a file with no VALUES rows
+  if ! grep -Eiq 'INSERT[[:space:]]+INTO[[:space:]]+nms_items' "$tmp_sql"; then
+    echo "[PIPE][ERROR] Import SQL has no nms_items inserts."
+    echo "  See: $LOGS/fullparse_present.$stamp.log and $LOGS/initial_import.$stamp.log.py"
+    return 1
+  fi
+
 
   # Execute the SQL with preferred shape; reuse DB_PASS if present (no extra prompt)
   if ! maria -D "$DB_NAME" -N -e "$(cat "$tmp_sql")" \

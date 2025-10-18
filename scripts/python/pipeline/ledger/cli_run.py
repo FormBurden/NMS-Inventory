@@ -1,7 +1,12 @@
 # scripts/python/pipeline/ledger/cli_run.py
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple, Optional, Union
-from . import (
+# Package-import shim for direct execution (python cli_run.py ...)
+# Ensures repo root is on sys.path so absolute imports work even if __package__ is unset.
+if __package__ in (None, ""):
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5]))
+from scripts.python.pipeline.ledger import (
     parse_any_timestamp, canonical_ts_from_file,
     aggregate_inventory, diff_inventories, coalesce_sessions, write_ledger_to_db,
     initial_import_to_csv_sql, parse_initial_sql_totals,
