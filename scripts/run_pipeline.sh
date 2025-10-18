@@ -102,16 +102,15 @@ SRC_MTIME="$(stat -c %Y "$HG_FILE" 2>/dev/null || stat -f %m "$HG_FILE" 2>/dev/n
 python3 "$ROOT/scripts/python/pipeline/build_manifest.py" \
   --source "$HG_FILE" \
   --source-mtime "$SRC_MTIME" \
-  --decoded "$raw_json" \
-  --out "$ROOT/storage/decoded/_manifest_recent.json"
 
 # --- initial import (generate SQL then execute via MariaDB) -------------------
 run_initial_import() {
   local tmp_sql="$LOGS/initial_import.$stamp.sql"
   # Generate SQL from the latest manifest (will reference fullparse outputs)
-  if ! python3 "$ROOT/scripts/python/db_import_initial.py" \
-         --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
-         > "$tmp_sql" 2>"$LOGS/initial_import.$stamp.log.py"; then
+  if ! python3 "$ROOT/scripts/python/pipeline/ledger/cli_run.py" initial_import \
+        --db-name "$DB_NAME" --manifest "$ROOT/storage/decoded/_manifest_recent.json"; then
+        --manifest "$ROOT/storage/decoded/_manifest_recent.json"; then
+        > "$tmp_sql" 2>"$LOGS/initial_import.$stamp.log.py";
     echo "[PIPE][ERROR] db_import_initial.py failed; see $LOGS/initial_import.$stamp.log.py"
     return 1
   fi
@@ -131,7 +130,7 @@ run_initial_import() {
   fi
 
   # Quick count to confirm rows landed
-  maria -D "$DB_NAME" -N -e "SELECT 'rows_loaded', COUNT(*) FROM nms_items WHERE snapshot_id=(SELECT MAX(snapshot_id) FROM nms_snapshots);" || true
+  maria -D "$DB_NAME" -N -e "SELECT 'rows_loaded' AS tag, COUNT(*) FROM nms_items WHERE snapshot_id=(SELECT MAX(snapshot_id) FROM nms_snapshots);" || true
 }
 
 run_initial_import
