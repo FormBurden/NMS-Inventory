@@ -1,19 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-run() {
-  local IN="$1"; local OUT="$2"
-  if [[ -f "$IN" ]]; then
-    echo "[run] $IN -> $OUT"
-    python3 -m scripts.python.nms_fullparse -i "$IN" -o "$OUT"
-  else
-    echo "[skip] missing: $IN"
-  fi
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+run_one() {
+  local IN="$1"
+  local stem="${IN##*/}"
+  stem="${stem%.json}"
+  local OUT="output/fullparse/${stem}.full.json"
+  echo "[run] $IN -> $OUT"
+  python3 -m scripts.python.nms_fullparse -i "$IN" -o "$OUT"
 }
 
-run storage/decoded/save.json               output/fullparse/save.full.json
-run storage/decoded/save2.json              output/fullparse/save2.full.json
-run storage/decoded/saveexpedition.json     output/fullparse/saveexpedition.full.json
-run storage/decoded/saveexpendition2.json   output/fullparse/saveexpendition2.full.json
-run storage/decoded/savenormal.json         output/fullparse/savenormal.full.json
-run storage/decoded/savenormal2.json        output/fullparse/savenormal2.full.json
+shopt -s nullglob
+found=0
+for IN in storage/decoded/*.json; do
+  # ignore the manifest file if present
+  [[ "$(basename "$IN")" == "_manifest_recent.json" ]] && continue
+  run_one "$IN"
+  found=1
+done
+
+if [[ $found -eq 0 ]]; then
+  # stay quiet about “missing” specific mode files; just one informative line
+  echo "[info] no decoded saves found under storage/decoded/"
+fi

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-import json
-import os
-import sys
-import hashlib
+import argparse, json, os, sys, hashlib
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Tuple
@@ -28,10 +25,7 @@ def _sha256(p: Path) -> Optional[str]:
         return None
 
 def _latest_pair() -> Optional[Tuple[Path, Path]]:
-    """
-    Heuristic: pick the most recently modified decoded save (*.json) and match its
-    fullparse partner (same stem, '.full.json' under output/fullparse).
-    """
+    """Pick most-recent decoded save (*.json) and its fullparse partner (<stem>.full.json)."""
     if not DECODED_DIR.exists():
         return None
     candidates = sorted(
@@ -46,7 +40,22 @@ def _latest_pair() -> Optional[Tuple[Path, Path]]:
             return (src, out)
     return None
 
+def _derive_save_root_from_source_path(src: Path) -> str:
+    """
+    Best-effort: if decoded path contains something like .../NMS/<st_...>/save2.json,
+    return that <st_...>. Otherwise return empty string (pipeline can set active root later).
+    """
+    for seg in src.parts[::-1]:
+        if seg.startswith("st_"):
+            return seg
+    return ""
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Build manifest for initial import")
+    ap.add_argument("--source", default="", help="Original HG path (optional)")
+    ap.add_argument("--source-mtime", default="", help="Source mtime (seconds) for provenance (optional)")
+    args = ap.parse_args()
+
     pair = _latest_pair()
     if not pair:
         # Ensure no stale tmp remains; create an empty manifest atomically
@@ -54,31 +63,34 @@ def main() -> int:
         os.replace(MANIFEST_TMP, MANIFEST_FINAL)
         return 0
 
-    source_path, out_json = pair
-    # File metadata
-    src_mtime = source_path.stat().st_mtime
+    decoded_path, out_json = pair
+    src_mtime = decoded_path.stat().st_mtime
     out_mtime = out_json.stat().st_mtime if out_json.exists() else None
-    src_sha = _sha256(source_path)
-    out_sha = _sha256(out_json) if out_json.exists() else None
 
-    # Define snapshot_ts from decoded file mtime (decode completion time)
-    snapshot_ts = _iso_utc(src_mtime)
+    # Hashes; importer expects 'json_sha256' representing the JSON we will load (out_json).
+    out_sha = _sha256(out_json)
+    src_sha = _sha256(decoded_path)
+
+    # Derive save_root from decoded path if possible
+    save_root = _derive_save_root_from_source_path(decoded_path)
 
     manifest = {
-        "snapshot_ts": snapshot_ts,
+        "snapshot_ts": _iso_utc(src_mtime),
         "items": [
             {
-                "source_path": str(source_path),
-                "out_json": str(out_json),
-                "source_mtime": _iso_utc(src_mtime),
-                "out_mtime": _iso_utc(out_mtime) if out_mtime else None,
-                "source_sha256": src_sha,
-                "out_sha256": out_sha,
+                "source_path": str(decoded_path),            # path we decoded to
+                "out_json":    str(out_json),                # fullparse JSON
+                "save_root":   save_root,                    # helps UI grouping
+                "source_mtime": _iso_utc(src_mtime),         # importer reads this
+                "decoded_mtime": _iso_utc(out_mtime) if out_mtime else None,  # importer expects this key
+                "json_sha256":  out_sha or "",               # importer expects this key
+                # keep the originals too (harmless):
+                "source_sha256": src_sha or "",
             }
         ],
     }
 
-    # Atomic write: write .tmp then replace
+    # Atomic write
     MANIFEST_TMP.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(MANIFEST_TMP, MANIFEST_FINAL)
     return 0

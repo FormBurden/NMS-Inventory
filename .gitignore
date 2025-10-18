@@ -86,3 +86,5 @@ data/
 assets/img*
 .env.dbshim
 scripts/bundle*
+scripts/contracts/*
+contracts*

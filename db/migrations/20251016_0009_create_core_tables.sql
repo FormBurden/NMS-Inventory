@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS `nms_snapshots` (
   KEY `idx_snapshots_imported_at` (`imported_at`)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_uca1400_ai_ci;
+  COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `nms_items` (
   `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `nms_items` (
     ON UPDATE CASCADE
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_uca1400_ai_ci;
+  COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `nms_save_roots` (
   `save_root` VARCHAR(64) NOT NULL,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `nms_save_roots` (
   PRIMARY KEY (`save_root`)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_uca1400_ai_ci;
+  COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `nms_settings` (
   `key`   VARCHAR(128) NOT NULL,
@@ -54,4 +54,4 @@ CREATE TABLE IF NOT EXISTS `nms_settings` (
   PRIMARY KEY (`key`)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_uca1400_ai_ci;
+  COLLATE=utf8mb4_unicode_ci;

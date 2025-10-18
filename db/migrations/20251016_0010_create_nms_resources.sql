@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS nms_resources (
   PRIMARY KEY (resource_id),
   KEY idx_is_active (is_active),
   KEY idx_code (code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ALTER TABLE nms_resources ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1;
 
 
