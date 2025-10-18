@@ -144,6 +144,13 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
     resources_values = ",\n".join(f"('{rid}')" for rid in sorted(resource_ids))
     source_path_sql = _escape_sql(json_path.as_posix())
     save_root_sql   = _escape_sql(save_root or "")
+    # Epoch seconds from the JSON file mtime; fallback to canonical_ts if stat fails
+    try:
+        _epoch = int(json_path.stat().st_mtime)
+    except Exception:
+        _ts = canonical_ts_from_file(json_path, use_mtime=True)
+        _epoch = int(_ts.timestamp())
+    source_mtime_sql = str(_epoch)
 
     sql_lines: List[str] = []
     sql_lines.append("SET FOREIGN_KEY_CHECKS=0;")
@@ -154,8 +161,8 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
         sql_lines.append(resources_values + ";")
 
     sql_lines.append(
-        f"INSERT INTO nms_snapshots(source_path, save_root) "
-        f"VALUES ('{source_path_sql}', '{save_root_sql}');"
+        f"INSERT INTO nms_snapshots(source_path, save_root, source_mtime) "
+        f"VALUES ('{source_path_sql}', '{save_root_sql}', {source_mtime_sql});"
     )
     sql_lines.append("SET @sid := LAST_INSERT_ID();")
 
