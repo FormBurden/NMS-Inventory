@@ -165,3 +165,10 @@ python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
   >"$LOGS/ledger.$stamp.log" 2>&1
 
 echo "[PIPE] done."
+
+# --- Post-run: dump live schema snapshot (keeps db/_schema_dump/* fresh) ---
+if [[ -x scripts/db_dump_schema.sh ]]; then
+  echo "[post-run] dumping schema snapshot …"
+  scripts/db_dump_schema.sh || echo "[warn] schema dump failed"
+fi
+
