@@ -88,3 +88,4 @@ assets/img*
 scripts/bundle*
 scripts/contracts/*
 contracts*
+db/_schema_dump*

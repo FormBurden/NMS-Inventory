@@ -60,7 +60,7 @@ def _find_best_json(item: Dict[str, Any]) -> Optional[Path]:
 
 def _emit_initial_sql(json_path: Path, include_tech: bool = False, use_mtime: bool = False) -> str:
     js = _read_json(json_path)
-    # Expect aggregate_inventory(js) -> Dict[(owner_type, inventory, resource_id), amount]
+    # aggregate_inventory(js) -> Dict[(owner_type, inventory, resource_id), amount]
     totals = aggregate_inventory(js, include_tech=include_tech)
     if not totals:
         return "/* no snapshot rows generated */\n"
@@ -68,24 +68,52 @@ def _emit_initial_sql(json_path: Path, include_tech: bool = False, use_mtime: bo
     ts = canonical_ts_from_file(json_path, use_mtime=use_mtime)
     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Build SQL for nms_snapshots + nms_items (rows for latest snapshot)
-    rows = []
+    # Normalize labels to likely DB-enum/canonical forms
+    def norm_owner(s: str) -> str:
+        s = (s or "").strip().lower()
+        if s == "character": return "Character"
+        if s == "ship": return "Ship"
+        if s == "vehicle": return "Vehicle"
+        if s == "freighter": return "Freighter"
+        return "Unknown"
+
+    def norm_inv(s: str) -> str:
+        s = (s or "").strip().lower()
+        if s == "general": return "General"
+        if s in ("tech", "technology"): return "Technology"
+        if s == "cargo": return "Cargo"
+        return "General"
+
+    # Build VALUES for nms_items and a distinct set of resource_ids (for FK safety)
+    item_rows = []
+    resource_ids = set()
     for (owner_type, inventory, resource_id), amt in sorted(totals.items()):
-        rows.append(
-            f"(@sid, '{_escape_sql(str(owner_type))}', "
-            f"'{_escape_sql(str(inventory))}', "
-            f"'{_escape_sql(str(resource_id))}', {int(amt)})"
-        )
-    values_blob = ",\n".join(rows)
+        owner_sql = _escape_sql(norm_owner(str(owner_type)))
+        inv_sql   = _escape_sql(norm_inv(str(inventory)))
+        rid_sql   = _escape_sql(str(resource_id))
+        item_rows.append(f"(@sid, '{owner_sql}', '{inv_sql}', '{rid_sql}', {int(amt)})")
+        resource_ids.add(rid_sql)
+
+    # Preload resources to satisfy FK (no-ops for existing rows)
+    resources_values = ",\n".join([f"('{rid}')" for rid in sorted(resource_ids)])
 
     sql = []
+    # Be robust to FK orderings; re-enable after commit
+    sql.append("SET FOREIGN_KEY_CHECKS=0;")
     sql.append("START TRANSACTION;")
+
+    if resources_values:
+        sql.append("INSERT IGNORE INTO nms_resources(resource_id) VALUES")
+        sql.append(resources_values + ";")
+
     sql.append(f"INSERT INTO nms_snapshots(snapshot_ts) VALUES ('{ts_str}');")
     sql.append("SET @sid := LAST_INSERT_ID();")
     sql.append("INSERT INTO nms_items(snapshot_id, owner_type, inventory, resource_id, amount) VALUES")
-    sql.append(values_blob + ";")
+    sql.append(",\n".join(item_rows) + ";")
     sql.append("COMMIT;")
+    sql.append("SET FOREIGN_KEY_CHECKS=1;")
     return "\n".join(sql) + "\n"
+
 
 def main() -> None:
     import sys
