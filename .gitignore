@@ -89,3 +89,4 @@ scripts/bundle*
 scripts/contracts/*
 contracts*
 db/_schema_dump*
+db/meta*

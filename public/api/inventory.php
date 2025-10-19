@@ -67,15 +67,32 @@ try {
     $offset  = max(0, (int) param('offset', 0));
     $useRecent = (strtolower((string) param('sort', '')) === 'recent');
 
-    // WHERE clause for scope
     $whereSql = '';
     $params = [];
     if ($scope !== 'ALL') {
-        // Compare case-insensitively to match DB values like "character", "ship"
-        $whereSql = "WHERE LOWER(owner_type) = :owner_scope";
-        $params[':owner_scope'] = strtolower($scope);
+        // Support comma-separated scopes (e.g., "frigate,corvette") and normalize common plural -> singular
+        $scopes = array_values(array_filter(array_map('strtolower', array_map('trim', explode(',', (string)$scope)))));
+        $norm = static function(string $s): string {
+            return $s === 'vehicles' ? 'vehicle' : $s;
+        };
+        $scopes = array_map($norm, $scopes);
+
+        if (count($scopes) === 1) {
+            $whereSql = "WHERE LOWER(owner_type) = :owner_scope";
+            $params[':owner_scope'] = $scopes[0];
+        } else {
+            $in = [];
+            foreach ($scopes as $i => $s) {
+                $ph = ":s{$i}";
+                $in[] = $ph;
+                $params[$ph] = $s;
+            }
+            if ($in) {
+                $whereSql = "WHERE LOWER(owner_type) IN (" . implode(',', $in) . ")";
+            }
+        }
     }
-    
+
 
     // Build the query without table aliases so WHERE clauses remain simple.
     if ($useRecent) {

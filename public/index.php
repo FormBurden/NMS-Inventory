@@ -23,7 +23,7 @@
       <button class="tab" data-scope="frigate">Frigate</button>
       <button class="tab" data-scope="corvette">Corvette</button>
       <button class="tab" data-scope="ship">Ship</button>
-      <button class="tab" data-scope="vehicles">Vehicles</button>
+      <button class="tab" data-scope="vehicle">Vehicles</button>
     </nav>
 
     <div id="grid" class="grid"></div>
