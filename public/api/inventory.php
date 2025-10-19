@@ -58,17 +58,30 @@ function param(string $key, $default = null) {
     return $_GET[$key] ?? $default;
 }
 
+function view_exists(PDO $pdo, string $name): bool {
+    $sql = "SELECT 1
+              FROM information_schema.VIEWS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :name
+             LIMIT 1";
+    $st = $pdo->prepare($sql);
+    $st->execute([':name' => $name]);
+    return (bool) $st->fetchColumn();
+}
+
 try {
+
     $pdo = db();
 
     // Inputs
-    $scope   = strtoupper((string) param('scope', 'ALL'));   // e.g., CHARACTER/SUIT/ALL
-    $limit   = max(1, min(1000, (int) param('limit', 100)));
-    $offset  = max(0, (int) param('offset', 0));
-    $useRecent = (strtolower((string) param('sort', '')) === 'recent');
+    $scope       = strtoupper((string) param('scope', 'ALL'));   // e.g., CHARACTER/SUIT/ALL
+    $limit       = max(1, min(1000, (int) param('limit', 100)));
+    $offset      = max(0, (int) param('offset', 0));
+    $useRecent   = (strtolower((string) param('sort', '')) === 'recent');
+    $includeTech = ((string) param('include_tech', '0') === '1');
 
     $whereSql = '';
     $params = [];
+
     if ($scope !== 'ALL') {
         // Support comma-separated scopes (e.g., "frigate,corvette") and normalize common plural -> singular
         $scopes = array_values(array_filter(array_map('strtolower', array_map('trim', explode(',', (string)$scope)))));
@@ -94,24 +107,54 @@ try {
     }
 
 
-    // Build the query without table aliases so WHERE clauses remain simple.
-    if ($useRecent) {
+    // Build SQL with view detection + base-table fallback so Include Tech works even if views are missing.
+    $haveActive = view_exists($pdo, 'v_api_inventory_rows_active');
+    $haveRecent = view_exists($pdo, 'v_api_inventory_rows_recent');
+
+    // If Include Tech is OFF we need item_type filtering, which the views may not expose.
+    // In that case prefer a base-table query against the newest snapshot.
+    $useBaseForTechFilter = ($includeTech === false);
+
+    // Owner filter exists as a WHERE ... clause built above; convert to "AND (...)" for base-table WHERE
+    $ownerFilter = '';
+    if ($whereSql) {
+        $ownerFilter = ' AND ' . preg_replace('/^\s*WHERE\s*/i', '', $whereSql);
+    }
+
+    if ($useBaseForTechFilter || (!$haveActive && !$haveRecent)) {
+        // Base-table fallback, honors Include Tech and Scope.
+        // Newest snapshot only; amounts are aggregated per owner/inventory/resource.
         $sql = "
-            SELECT owner_type, inventory, resource_id, amount
-            FROM v_api_inventory_rows_recent
-            " . ($whereSql ?: "") . "
-            ORDER BY recent_ts DESC, owner_type, inventory, resource_id
-            LIMIT :limit OFFSET :offset
+            SELECT owner_type, inventory, resource_id, SUM(amount) AS amount
+              FROM nms_items
+             WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM nms_snapshots)
+               " . ($includeTech ? "" : " AND item_type <> 'Technology' ") . "
+               $ownerFilter
+          GROUP BY owner_type, inventory, resource_id
+          ORDER BY owner_type, inventory, resource_id
+             LIMIT :limit OFFSET :offset
         ";
     } else {
-        $sql = "
-            SELECT owner_type, inventory, resource_id, amount
-            FROM v_api_inventory_rows_active
-            " . ($whereSql ?: "") . "
-            ORDER BY owner_type, inventory, resource_id
-            LIMIT :limit OFFSET :offset
-        ";
+        // View path: keep your existing sort behaviors if views are present.
+        if ($useRecent && $haveRecent) {
+            $sql = "
+                SELECT owner_type, inventory, resource_id, amount
+                FROM v_api_inventory_rows_recent
+                " . ($whereSql ?: "") . "
+                ORDER BY recent_ts DESC, owner_type, inventory, resource_id
+                LIMIT :limit OFFSET :offset
+            ";
+        } else {
+            $sql = "
+                SELECT owner_type, inventory, resource_id, amount
+                FROM v_api_inventory_rows_active
+                " . ($whereSql ?: "") . "
+                ORDER BY owner_type, inventory, resource_id
+                LIMIT :limit OFFSET :offset
+            ";
+        }
     }
+
 
     $stmt = $pdo->prepare($sql);
     foreach ($params as $k => $v) {
