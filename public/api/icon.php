@@ -65,7 +65,7 @@ function serve_file_and_exit(string $path, int $maxAge = 604800): void {
 function serve_placeholder_and_exit(string $ph): void {
     $full = $_SERVER['DOCUMENT_ROOT'] . $ph; // public/assets/img/placeholder.png
     if (is_file($full)) {
-        send_png_headers(3600);
+        send_png_headers(31536000);
         readfile($full);
     } else {
         header('HTTP/1.1 404 Not Found');

@@ -71,11 +71,11 @@ try {
     $whereSql = '';
     $params = [];
     if ($scope !== 'ALL') {
-        // Normalize 'CHARACTER' to 'SUIT' if your data uses SUIT as the owner_type
-        $ownerScope = ($scope === 'CHARACTER') ? 'SUIT' : $scope;
-        $whereSql = "WHERE owner_type = :owner_scope";
-        $params[':owner_scope'] = $ownerScope;
+        // Compare case-insensitively to match DB values like "character", "ship"
+        $whereSql = "WHERE LOWER(owner_type) = :owner_scope";
+        $params[':owner_scope'] = strtolower($scope);
     }
+    
 
     // Build the query without table aliases so WHERE clauses remain simple.
     if ($useRecent) {

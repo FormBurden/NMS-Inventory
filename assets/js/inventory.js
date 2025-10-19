@@ -18,7 +18,7 @@
     settings: `${BASE}/api/settings.php`,
     items: `${BASE}/data/items_local.json`,
     icon: `${BASE}/api/icon.php`,
-    placeholder: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+    placeholder: '/assets/img/placeholder.png'
     
   };
   const EAGER_IMG_COUNT = 12; // first N icons render eager + high priority
@@ -58,10 +58,13 @@
   }
 
   function iconSrcFor(row) {
-    // Route through PHP so sources can be swapped centrally and to leverage fallbacks
+    // If we have no known icon for this item, use a single shared placeholder URL
+    if (!row.icon) return ENDPOINTS.placeholder;
+    // Otherwise route through PHP so sources can be swapped centrally and to leverage fallbacks
     const typeHint = encodeURIComponent(row.type || "");
     return `${ENDPOINTS.icon}?id=${encodeURIComponent(row.resource_id)}${typeHint ? `&type=${typeHint}` : ""}`;
   }
+
 
   // ---------- Rendering ----------
   function cardRow(r, eager = false) {
@@ -73,16 +76,13 @@
     });
     if (eager) img.setAttribute("fetchpriority", "high");
 
-    // If CDN/icon fails, try icon.php without type, then a final 1x1 placeholder
+    // If CDN/icon fails, fall back to a single shared, strongly cached placeholder
     img.addEventListener("error", () => {
-      if (!img.dataset.fallback1) {
-        img.dataset.fallback1 = "1";
-        img.src = `${ENDPOINTS.icon}?id=${encodeURIComponent(String(r.resource_id || ""))}`;
-      } else if (!img.dataset.fallback2) {
-        img.dataset.fallback2 = "1";
+      if (img.src !== ENDPOINTS.placeholder) {
         img.src = ENDPOINTS.placeholder;
       }
     });
+
 
     return el("div", { className: "card" }, [
       el("div", { className: "icon" }, [img]),
@@ -189,8 +189,10 @@
           resource_id: rid,
           display_id: row.display_id || rid,
           display_name: meta.name || row.display_name || rid,
+          icon: meta.icon || null,
           type: (meta.kind || row.type || "").toString(),
         };
+
 
         enriched.icon_url = iconSrcFor(enriched);
         return enriched;
