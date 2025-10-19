@@ -111,11 +111,10 @@ try {
     $haveActive = view_exists($pdo, 'v_api_inventory_rows_active');
     $haveRecent = view_exists($pdo, 'v_api_inventory_rows_recent');
 
-    // If Include Tech is OFF we need item_type filtering, which the views may not expose.
-    // In that case prefer a base-table query against the newest snapshot.
+    // If Include Tech is OFF we need item_type filtering, which the views may not expose; prefer base-table in that case.
     $useBaseForTechFilter = ($includeTech === false);
 
-    // Owner filter exists as a WHERE ... clause built above; convert to "AND (...)" for base-table WHERE
+    // Convert WHERE built earlier into an "AND (...)" segment for the base-table query
     $ownerFilter = '';
     if ($whereSql) {
         $ownerFilter = ' AND ' . preg_replace('/^\s*WHERE\s*/i', '', $whereSql);
@@ -123,19 +122,19 @@ try {
 
     if ($useBaseForTechFilter || (!$haveActive && !$haveRecent)) {
         // Base-table fallback, honors Include Tech and Scope.
-        // Newest snapshot only; amounts are aggregated per owner/inventory/resource.
+        // Newest snapshot only; amounts aggregated per owner/inventory/resource.
         $sql = "
             SELECT owner_type, inventory, resource_id, SUM(amount) AS amount
               FROM nms_items
              WHERE snapshot_id = (SELECT MAX(snapshot_id) FROM nms_snapshots)
-               " . ($includeTech ? "" : " AND item_type <> 'Technology' ") . "
+               " . ($includeTech ? "" : " AND UPPER(inventory) <> 'TECHNOLOGY' AND UPPER(item_type) <> 'TECHNOLOGY' ") . "
                $ownerFilter
           GROUP BY owner_type, inventory, resource_id
           ORDER BY owner_type, inventory, resource_id
              LIMIT :limit OFFSET :offset
         ";
     } else {
-        // View path: keep your existing sort behaviors if views are present.
+        // View path: retain existing sort behaviors if views are present.
         if ($useRecent && $haveRecent) {
             $sql = "
                 SELECT owner_type, inventory, resource_id, amount
