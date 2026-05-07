@@ -3,10 +3,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple, Optional, Union
 
-# Package-import shim for direct execution
-if __package__ in (None, ""):
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5]))
+# Package-import shim for direct execution and legacy ledger imports.
+# This file can be imported as ledger.cli_main by nms_resource_ledger.py,
+# so the repo root must be available even when __package__ is not empty.
+import sys, pathlib
+ROOT = pathlib.Path(__file__).resolve().parents[5]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # Leaf imports only (avoid aggregator __init__ which imports db_conn with redacted password literal)
 from scripts.python.pipeline.ledger.initial_import import _escape_sql  # type: ignore
@@ -107,12 +110,10 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
       3) INSERT nms_items(snapshot_id, owner_type, inventory, slot_index, resource_id, amount) VALUES (...)
     """
     js = _read_json(json_path)
-    # aggregate_inventory(js) -> Dict[(owner_type, inventory, resource_id), amount]
     totals = aggregate_inventory(js, include_tech=include_tech)
     if not totals:
         return "/* no snapshot rows generated */\n"
 
-    # Canonical labels (align with enum values if present)
     def norm_owner(s: str) -> str:
         s = (s or "").strip().lower()
         if s == "character": return "Character"
@@ -128,46 +129,37 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
         if s == "cargo": return "Cargo"
         return "General"
 
-    # Collect values
-    item_rows: List[str] = []
     resource_ids: set[str] = set()
-    for (owner_type, inventory, resource_id), amt in sorted(totals.items()):
+    slot_counters = defaultdict(int)
+    item_rows: List[str] = []
+
+    for (owner_type, inventory, resource_id), amt in sorted(totals.items(), key=lambda x: (x[0][0], x[0][1], x[0][2])):
         owner_sql = _escape_sql(norm_owner(str(owner_type)))
-        inv_sql   = _escape_sql(norm_inv(str(inventory)))
-        rid_sql   = _escape_sql(str(resource_id))
+        inv_sql = _escape_sql(norm_inv(str(inventory)))
+        rid_sql = _escape_sql(str(resource_id))
         resource_ids.add(rid_sql)
 
-        # Assign synthetic slot_index 0..N-1 per (owner, inventory) group to satisfy uniq_slot_per_snapshot.
-        # We don't have container_id here (aggregate path), so treat it as '' in the uniqueness scope.
-        slot_counters = defaultdict(int)  # key: (owner_sql, inv_sql)
-        item_rows = []
-        # Sort for deterministic slot assignment
-        for (owner_sql, inv_sql, rid_sql), amt in sorted(totals.items(), key=lambda x: (x[0][0], x[0][1], x[0][2])):
-            slot_index = slot_counters[(owner_sql, inv_sql)]
-            slot_counters[(owner_sql, inv_sql)] += 1
-            item_rows.append(
-                f"(@sid, '{owner_sql}', '{inv_sql}', {slot_index}, '{rid_sql}', {int(amt)}, 'unknown')"
-            )
+        slot_index = slot_counters[(owner_sql, inv_sql)]
+        slot_counters[(owner_sql, inv_sql)] += 1
+        item_rows.append(
+            f"(@sid, '{owner_sql}', '{inv_sql}', {slot_index}, '{rid_sql}', {int(amt)}, 'unknown')"
+        )
 
-        # If for any reason the list ended up empty, emit sentinel and bail (prevents empty INSERT)
-        if not item_rows:
-            return "/* no snapshot rows generated */\n"
-
+    if not item_rows:
+        return "/* no snapshot rows generated */\n"
 
     resources_values = ",\n".join(f"('{rid}')" for rid in sorted(resource_ids))
     source_path_sql = _escape_sql(json_path.as_posix())
-    save_root_sql   = _escape_sql(save_root or "")
-    # Epoch seconds from the JSON file mtime; fallback to canonical_ts if stat fails
+    save_root_sql = _escape_sql(save_root or "")
+
     try:
         _epoch = int(json_path.stat().st_mtime)
     except Exception:
         _ts = canonical_ts_from_file(json_path, use_mtime=True)
         _epoch = int(_ts.timestamp())
-    # emit as a MariaDB DATETIME using FROM_UNIXTIME()
-    source_mtime_sql = f"FROM_UNIXTIME({_epoch})"
-    # Hash of the JSON file contents (hex)
-    json_sha256_sql = hashlib.sha256(json_path.read_bytes()).hexdigest()
 
+    source_mtime_sql = f"FROM_UNIXTIME({_epoch})"
+    json_sha256_sql = hashlib.sha256(json_path.read_bytes()).hexdigest()
 
     sql_lines: List[str] = []
     sql_lines.append("SET FOREIGN_KEY_CHECKS=0;")
@@ -183,7 +175,6 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
     )
     sql_lines.append("SET @sid := LAST_INSERT_ID();")
 
-    # >>> This is the block your shell grep looks for <<<
     sql_lines.append("INSERT INTO nms_items(snapshot_id, owner_type, inventory, slot_index, resource_id, amount, item_type) VALUES")
     sql_lines.append(",\n".join(item_rows) + ";")
 

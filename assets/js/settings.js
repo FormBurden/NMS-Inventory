@@ -11,17 +11,8 @@
 		status: document.getElementById("status"),
 	};
 
-	const BASE = (window.NMS_BASE || "/").replace(/\/+$/, "");
-	const SETTINGS_API = `${BASE}/api/settings.php`;
-
-	const DEFAULTS = {
-		language: "en-us",
-		defaultWindow: "Character",
-		iconSize: "medium",
-		showNegatives: true,
-		autoRefreshSec: 15,
-		theme: "system",
-	};
+	const BASE = (window.NMS_BASE || "/").replace(/\/+$/, ""), SETTINGS_API = `${BASE}/api/settings.php`;
+	const DEFAULTS = (window.NMSI && window.NMSI.SETTINGS_DEFAULTS) || { language: "en-us", defaultWindow: "Character", iconSize: "medium", showNegatives: true, autoRefreshSec: 15, theme: "system" };
 
 	function uiSet(s) {
 		if (els.defaultWindow) els.defaultWindow.value = s.defaultWindow || DEFAULTS.defaultWindow;
@@ -105,4 +96,3 @@
 		boot();
 	}
 })();
-  

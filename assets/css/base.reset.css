@@ -1,0 +1,17 @@
+:root {
+	--bg: #0c1014;
+	--fg: #dfe7ef;
+	--muted: #9fb3c8;
+	--card: #121820;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+	font: 14px/1.45 system-ui, Segoe UI, Roboto, Ubuntu;
+}

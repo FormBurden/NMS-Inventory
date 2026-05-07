@@ -2,256 +2,265 @@
 declare(strict_types=1);
 
 /**
- * Smart icon resolver, proxy, and persistent cache.
- *
- * How it works:
- * - Checks a persistent disk cache first (public/icons/ID.png -> ../cache/icons/ID.png).
- * - If not cached (or refresh=1), tries:
- *      1) Exact URL in items_local.json (proxied and cached, unless it is the NMS CDN path we rebuild).
- *      2) NMS CDN primary path from that URL if present (proxied and cached).
- *      3) Alternate NMS CDN categories (from .cache/aa/cdn_icon_index.json if available).
- *      4) Fandom fallback candidates from includes/icon_map.php (proxied and cached).
- * - On success, the file is stored in cache and served with long cache headers.
- * - On failure, serves the local placeholder.
- *
- * GET params:
- *   id        = resource id (e.g., OXYGEN or ^AMMO)  [required]
- *   type      = Product | Technology | Substance     [optional hint]
- *   refresh   = 1 to force re-download & overwrite cache for this id
+ * Icon resolver.
+ * Priority: direct URL → icon_map candidates → items_local.json → local file → placeholder.
+ * Remote icons are proxied and cached so the browser stays on localhost.
  */
+header('Cache-Control: public, max-age=86400');
 
-require_once __DIR__ . '/../../includes/icon_map.php';
+$placeholder = __DIR__ . '/../../assets/img/placeholder.png';
+$cacheDir = __DIR__ . '/../../cache/icons';
 
-$PLACEHOLDER = '/assets/img/placeholder.png';
-$ITEMS_PATH  = __DIR__ . '/../data/items_local.json';
-$CDN_INDEX   = __DIR__ . '/../../.cache/aa/cdn_icon_index.json';
-$CDN_BASE    = 'https://cdn.nmsassistant.com';
-
-// public/icons is a symlink to ../cache/icons in your tree; write directly to that backing dir.
-$CACHE_DIR   = realpath(__DIR__ . '/../../cache/icons') ?: (__DIR__ . '/../../cache/icons');
-
-// -------- helpers --------
-function send_png_headers(int $maxAge = 86400): void {
-    header('Content-Type: image/png');
-    $cc = 'public, max-age=' . $maxAge;
-    if ($maxAge >= 86400) $cc .= ', immutable';
-    header('Cache-Control: ' . $cc);
+function set_diag(string $v): void {
+    header('X-Icon-Resolver: ' . $v);
 }
 
+function is_head_request(): bool {
+    return strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'HEAD';
+}
 
-function serve_file_and_exit(string $path, int $maxAge = 604800): void {
-    $mtime = @filemtime($path) ?: time();
-    $size  = @filesize($path) ?: 0;
-    $etag  = '"' . md5($path . '|' . $mtime . '|' . $size) . '"';
-
-    // Conditional GET short-circuit
-    if ((isset($_SERVER['HTTP_IF_NONE_MATCH']) && trim($_SERVER['HTTP_IF_NONE_MATCH']) === $etag) ||
-        (isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) && @strtotime($_SERVER['HTTP_IF_MODIFIED_SINCE']) >= $mtime)) {
-        send_png_headers($maxAge);
-        header('ETag: ' . $etag);
-        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
-        header('HTTP/1.1 304 Not Modified');
+function emit_file(string $p, string $type = 'image/png', int $code = 200): never {
+    if (!is_file($p)) {
+        http_response_code(404);
         exit;
     }
 
-    send_png_headers($maxAge);
-    header('ETag: ' . $etag);
-    header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $mtime) . ' GMT');
-    readfile($path);
+    http_response_code($code);
+    header('Content-Type: ' . $type);
+    header('Content-Length: ' . (string)filesize($p));
+
+    if (!is_head_request()) {
+        readfile($p);
+    }
     exit;
 }
 
+function normalize_resource_id(string $rid): string {
+    $rid = strtoupper(trim($rid));
+    if ($rid !== '' && $rid[0] === '^') {
+        $rid = substr($rid, 1);
+    }
 
-function serve_placeholder_and_exit(string $ph): void {
-    $full = $_SERVER['DOCUMENT_ROOT'] . $ph; // public/assets/img/placeholder.png
-    if (is_file($full)) {
-        send_png_headers(31536000);
-        readfile($full);
+    $hashPos = strpos($rid, '#');
+    if ($hashPos !== false) {
+        $rid = substr($rid, 0, $hashPos);
+    }
+
+    return $rid;
+}
+
+function safe_remote_url(string $u): bool {
+    if (!preg_match('~^https?://~i', $u)) return false;
+    $host = strtolower((string)(parse_url($u, PHP_URL_HOST) ?? ''));
+    return $host !== '';
+}
+
+function fetch_remote_icon(string $u): ?array {
+    if (!safe_remote_url($u)) return null;
+
+    $type = '';
+    if (function_exists('curl_init')) {
+        $ch = curl_init($u);
+        if ($ch === false) return null;
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 8,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 NMS-Inventory/1.0',
+            CURLOPT_HEADER => false,
+        ]);
+
+        $body = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $type = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        curl_close($ch);
+
+        if (!is_string($body) || $body === '' || $code < 200 || $code >= 300) {
+            return null;
+        }
     } else {
-        header('HTTP/1.1 404 Not Found');
+        $ctx = stream_context_create([
+            'http' => [
+                'follow_location' => 1,
+                'max_redirects' => 8,
+                'timeout' => 20,
+                'header' => "User-Agent: Mozilla/5.0 NMS-Inventory/1.0\r\n",
+            ],
+        ]);
+
+        $body = @file_get_contents($u, false, $ctx);
+        if (!is_string($body) || $body === '') {
+            return null;
+        }
+
+        foreach (($http_response_header ?? []) as $header) {
+            if (stripos($header, 'Content-Type:') === 0) {
+                $type = trim(substr($header, strlen('Content-Type:')));
+                break;
+            }
+        }
     }
-    exit;
-}
 
-function ensure_dir(string $dir): bool {
-    return is_dir($dir) || @mkdir($dir, 0775, true);
-}
-
-function cache_path(string $id): string {
-    global $CACHE_DIR;
-    return rtrim($CACHE_DIR, '/\\') . '/' . $id . '.png';
-}
-
-function load_json(string $path): array {
-    if (is_file($path)) {
-        $j = json_decode(@file_get_contents($path), true);
-        if (is_array($j)) return $j;
+    $type = strtolower(trim(explode(';', $type)[0] ?? ''));
+    if (!in_array($type, ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true)) {
+        return null;
     }
+
+    return ['body' => $body, 'type' => $type];
+}
+
+function emit_remote_icon(string $u, string $source, string $cacheDir): bool {
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0775, true);
+    }
+    if (!is_dir($cacheDir)) {
+        return false;
+    }
+
+    $key = hash('sha256', $u);
+    $bin = $cacheDir . '/' . $key . '.bin';
+    $meta = $cacheDir . '/' . $key . '.json';
+
+    if (is_file($bin) && is_file($meta)) {
+        $raw = @file_get_contents($meta);
+        $m = is_string($raw) ? json_decode($raw, true) : null;
+        $type = is_array($m) ? (string)($m['content_type'] ?? 'image/png') : 'image/png';
+        set_diag($source . ':cache');
+        emit_file($bin, $type);
+    }
+
+    $fetched = fetch_remote_icon($u);
+    if (!$fetched) {
+        return false;
+    }
+
+    if (@file_put_contents($bin, $fetched['body']) === false) {
+        return false;
+    }
+
+    @file_put_contents($meta, json_encode([
+        'url' => $u,
+        'content_type' => $fetched['type'],
+    ], JSON_UNESCAPED_SLASHES));
+
+    set_diag($source . ':proxy');
+    emit_file($bin, $fetched['type']);
+}
+
+function emit_first_remote_icon(array $urls, string $source, string $cacheDir): bool {
+    foreach ($urls as $u) {
+        $u = (string)$u;
+        if ($u !== '' && preg_match('~^https?://~i', $u) && emit_remote_icon($u, $source, $cacheDir)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function icon_map_candidates(string $rid, string $type): array {
+    $mapPath = realpath(__DIR__ . '/../../includes/icon_map.php');
+    if (!$mapPath || !is_file($mapPath)) {
+        return [];
+    }
+
+    require_once $mapPath;
+
+    if (function_exists('nms_icon_candidates')) {
+        $out = nms_icon_candidates($rid, $type);
+        return is_array($out) ? $out : [];
+    }
+
+    if (function_exists('nms_icon_for_id')) {
+        return [(string)nms_icon_for_id($rid)];
+    }
+
+    if (function_exists('nms_icon_url')) {
+        return [(string)nms_icon_url($rid, $type)];
+    }
+
     return [];
 }
 
-function cdn_has(array $idx, string $cat, int $id): bool {
-    return isset($idx['categories'][$cat]) && is_array($idx['categories'][$cat])
-        ? in_array($id, $idx['categories'][$cat], true)
-        : false;
+$inUrl = trim((string)($_GET['url'] ?? ''));
+if ($inUrl !== '' && emit_remote_icon($inUrl, 'direct-url', $cacheDir)) {
+    exit;
 }
 
-function cdn_url(string $cat, int $id): string {
-    global $CDN_BASE;
-    return rtrim($CDN_BASE, '/') . '/' . rawurlencode($cat) . '/' . $id . '.png';
-}
+$rawRid = (string)($_GET['id'] ?? $_GET['rid'] ?? $_GET['resource_id'] ?? '');
+$rid = normalize_resource_id($rawRid);
+$type = trim((string)($_GET['type'] ?? ''));
 
-function fallback_categories(string $type): array {
-    $t = strtolower($type);
-    switch ($t) {
-        case 'product':
-            return ['products','tradeItems','proceduralProducts','curiosities','rawMaterials','other','cooking'];
-        case 'technology':
-            return ['technology','constructedTechnology','upgradeModules','building','products'];
-        case 'substance':
-        case 'rawmaterials':
-        case 'substances':
-            return ['rawMaterials','products','tradeItems','curiosities'];
-        default:
-            return ['products','rawMaterials','tradeItems','curiosities','other','technology','constructedTechnology','upgradeModules','building'];
+if ($rid !== '') {
+    $urls = icon_map_candidates($rid, $type);
+    if (emit_first_remote_icon($urls, 'icon_map:url', $cacheDir)) {
+        exit;
     }
-}
 
-/**
- * Download a remote image (preferably PNG) and return the bytes, or null on failure.
- */
-function download_png_bytes(string $url, int $timeout = 6): ?string {
-    $ch = curl_init($url);
-    if (!$ch) return null;
-    curl_setopt_array($ch, [
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS      => 3,
-        CURLOPT_CONNECTTIMEOUT => 4,
-        CURLOPT_TIMEOUT        => $timeout,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_USERAGENT      => 'NMS-Inventory/1.0 (+local)',
-        CURLOPT_HTTPHEADER     => ['Accept: image/png,image/*;q=0.8,*/*;q=0.5'],
-    ]);
-    $body = curl_exec($ch);
-    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $ctype= (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    curl_close($ch);
+    foreach ($urls as $u) {
+        $u = (string)$u;
+        if ($u === '' || preg_match('~^https?://~i', $u)) {
+            continue;
+        }
 
-    if ($code >= 200 && $code < 300 && is_string($body) && strlen($body) > 0) {
-        // Be lenient: some sources return "image/*" or omit charset; accept any image
-        if ($ctype === '' || stripos($ctype, 'image') !== false) {
-            return $body;
+        $local = realpath(__DIR__ . '/../' . ltrim($u, '/'));
+        if ($local && is_file($local)) {
+            set_diag('icon_map:local');
+            emit_file($local);
         }
     }
-    return null;
 }
 
-/**
- * Save bytes atomically to cache path, then serve the cached file.
- */
-function save_and_serve_cache(string $id, string $bytes): bool {
-    $dest = cache_path($id);
-    if (!ensure_dir(dirname($dest))) return false;
+if ($rid !== '') {
+    $candidates = [
+        __DIR__ . '/../data/items_local.json',
+        __DIR__ . '/../assets/items_local.json',
+        __DIR__ . '/../icons/items_local.json',
+        __DIR__ . '/../Inventory/assets/items_local.json',
+        __DIR__ . '/../Inventory/data/items_local.json',
+        __DIR__ . '/../Inventory/items_local.json',
+    ];
 
-    $tmp  = $dest . '.tmp.' . bin2hex(random_bytes(4));
-    if (@file_put_contents($tmp, $bytes) === false) return false;
-    @chmod($tmp, 0644);
-    // Atomic swap
-    if (!@rename($tmp, $dest)) {
-        @unlink($tmp);
-        return false;
-    }
-    serve_file_and_exit($dest, 604800);
-    return true; // never actually reaches due to exit
-}
+    foreach ($candidates as $p) {
+        if (!is_file($p)) continue;
 
-/**
- * Fetch a URL, write into cache for $id on success, and serve it.
- */
-function fetch_cache_and_serve(string $url, string $id): bool {
-    $bytes = download_png_bytes($url);
-    if ($bytes === null) return false;
-    return save_and_serve_cache($id, $bytes);
-}
+        $raw = @file_get_contents($p);
+        $arr = $raw !== false ? json_decode($raw, true) : null;
+        if (!is_array($arr)) continue;
 
-// -------- input --------
-$id      = isset($_GET['id']) ? strtoupper(ltrim(urldecode((string)$_GET['id']), '^')) : '';
-$type    = isset($_GET['type']) ? (string)$_GET['type'] : '';
-$refresh = isset($_GET['refresh']) && $_GET['refresh'] !== '0';
+        foreach ($arr as $row) {
+            if (!is_array($row)) continue;
 
-if ($id === '') {
-    serve_placeholder_and_exit($PLACEHOLDER);
-}
+            $id = normalize_resource_id((string)($row['resource_id'] ?? $row['id'] ?? ''));
+            if ($id !== $rid) continue;
 
-// 0) If not forced refresh, try local override / persistent cache first.
-//    Note: public/icons is a symlink to ../cache/icons in your repo layout.
-$localSymlinkPath = __DIR__ . '/../icons/' . $id . '.png';
-$directCachePath  = cache_path($id);
-if (!$refresh) {
-    if (is_file($localSymlinkPath)) {
-        serve_file_and_exit($localSymlinkPath, 604800);
-    }
-    if ($directCachePath !== $localSymlinkPath && is_file($directCachePath)) {
-        serve_file_and_exit($directCachePath, 604800);
+            $u = (string)($row['icon_url'] ?? $row['icon'] ?? '');
+            if ($u !== '') {
+                if (preg_match('~^https?://~i', $u) && emit_remote_icon($u, 'items_json:url', $cacheDir)) {
+                    exit;
+                }
+
+                $local = realpath(__DIR__ . '/../' . ltrim($u, '/'));
+                if ($local && is_file($local)) {
+                    set_diag('items_json:local');
+                    emit_file($local);
+                }
+            }
+
+            break 2;
+        }
     }
 }
 
-// 1) Load item metadata for hints
-$items = load_json($ITEMS_PATH);
-$entry = is_array($items) ? ($items[$id] ?? ($items[preg_replace('/#.*/', '', $id)] ?? null)) : null;
-if ($entry && !$type) {
-    $type = (string)($entry['kind'] ?? $type);
-}
-$icon   = is_array($entry) ? (string)($entry['icon'] ?? '') : '';
-$appId  = is_array($entry) && isset($entry['appId']) && is_numeric($entry['appId']) ? (int)$entry['appId'] : null;
-
-// 2) If metadata has an absolute URL that is NOT the NMS CDN, fetch & cache that.
-if ($icon && filter_var($icon, FILTER_VALIDATE_URL)) {
-    $host = parse_url($icon, PHP_URL_HOST) ?: '';
-    if (strcasecmp($host, 'cdn.nmsassistant.com') !== 0) {
-        if (fetch_cache_and_serve($icon, $id)) { /* served */ }
-        // If it failed, continue with CDN fallback.
+if ($rid !== '') {
+    $byId = __DIR__ . '/../icons/' . $rid . '.png';
+    if (is_file($byId)) {
+        set_diag('icons/<ID>.png');
+        emit_file($byId);
     }
 }
 
-// 3) Work out a primary CDN cat/id if the icon already points to cdn
-$primaryCat = '';
-$primaryId  = null;
-if ($icon && filter_var($icon, FILTER_VALIDATE_URL)) {
-    $path = parse_url($icon, PHP_URL_PATH) ?: '';
-    if (preg_match('~^/([^/]+)/([0-9]+)\.png$~', $path, $m)) {
-        $primaryCat = $m[1];
-        $primaryId  = (int)$m[2];
-    }
-}
-
-// 4) Load CDN index if present (optional optimization)
-$idx = load_json($CDN_INDEX);
-
-// 5) Try primary CDN path first (if known)
-if ($primaryCat && $primaryId !== null) {
-    if (!$idx || cdn_has($idx, $primaryCat, $primaryId)) {
-        if (fetch_cache_and_serve(cdn_url($primaryCat, $primaryId), $id)) { /* served */ }
-    }
-}
-
-// 6) Try alternates for numeric id (prefer id from URL, then appId)
-$tryId = $primaryId ?? $appId;
-if ($tryId !== null) {
-    $cats = $primaryCat ? array_merge([$primaryCat], fallback_categories($type)) : fallback_categories($type);
-    $seen = [];
-    foreach ($cats as $cat) {
-        if (isset($seen[$cat])) continue; $seen[$cat] = true;
-        if ($idx && !cdn_has($idx, $cat, $tryId)) continue; // skip if index definitively says "no"
-        if (fetch_cache_and_serve(cdn_url($cat, (int)$tryId), $id)) { /* served */ }
-    }
-}
-
-// 7) Fandom fallbacks (ordered candidates from includes/icon_map.php)
-$candidates = nms_icon_candidates($id, $type);
-foreach ($candidates as $u) {
-    if (fetch_cache_and_serve($u, $id)) { /* served */ }
-}
-
-// 8) No luck — placeholder
-serve_placeholder_and_exit($PLACEHOLDER);
+set_diag('placeholder');
+emit_file($placeholder, 'image/png', 200);

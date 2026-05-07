@@ -1,0 +1,32 @@
+.topbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 10px 14px;
+	background: #0f141a;
+	border-bottom: 1px solid #1c2733;
+}
+
+.title {
+	font-weight: 700;
+	font-size: 16px;
+}
+
+.actions {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+
+.actions input[type="text"] {
+	background: #0d1319;
+	color: var(--fg);
+	border: 1px solid #1c2733;
+	border-radius: 8px;
+	padding: 6px 10px;
+	outline: none;
+}
+
+.actions input[type="text"]::placeholder {
+	color: #6f8297;
+}

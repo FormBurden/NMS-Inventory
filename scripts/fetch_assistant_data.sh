@@ -50,16 +50,33 @@ curl -fsSL -o "${NUPKG}" "${URL}"
 
 echo "Extracting to .cache/aa/pkg"
 rm -rf pkg && mkdir -p pkg
-unzip -oq "${NUPKG}" \
-  'contentFiles/any/any/Assets/data/*' \
-  'contentFiles/any/any/Assets/json/en-us/*' \
-  'contentFiles/any/any/Assets/json/en/*' \
-  'Assets/data/*' \
-  'Assets/json/en-us/*' \
-  'Assets/json/en/*' \
-  -d pkg
 
+archive_paths="$(unzip -Z1 "${NUPKG}")"
 
+extract_prefix_if_present() {
+  local prefix="$1"
+  if printf '%s\n' "${archive_paths}" | grep -Fq "${prefix}/"; then
+    printf '%s\n' "${archive_paths}" \
+      | grep -F "${prefix}/" \
+      | while IFS= read -r path; do
+          unzip -oq "${NUPKG}" "${path}" -d pkg
+        done
+  fi
+}
+
+extract_prefix_if_present 'contentFiles/any/any/Assets/data'
+extract_prefix_if_present 'contentFiles/any/any/Assets/json/en-us'
+extract_prefix_if_present 'contentFiles/any/any/Assets/json/en'
+extract_prefix_if_present 'Assets/data'
+extract_prefix_if_present 'Assets/json/en-us'
+extract_prefix_if_present 'Assets/json/en'
+
+if ! find pkg -type f -path "*/Assets/*" -name '*.json' | grep -q .; then
+  echo "No AssistantApps JSON files were extracted from ${NUPKG}"
+  echo "Archive paths containing Assets were:"
+  printf '%s\n' "${archive_paths}" | grep '/Assets/' || true
+  exit 1
+fi
 
 echo "Found JSON files under Assets/:"
 find pkg -type f -path "*/Assets/*" -name '*.json' -print | sed 's#^.*/Assets/#  Assets/#'

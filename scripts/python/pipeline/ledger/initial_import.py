@@ -8,9 +8,29 @@ def _escape_sql(s: str) -> str:
 
 def _collect_initial_rows(js: Dict[str, Any], include_tech: bool = False) -> List[Tuple[str, str, int]]:
     from .inventory import aggregate_inventory
+
     totals = aggregate_inventory(js, include_tech=include_tech)
+    collapsed: Dict[Tuple[str, str], int] = {}
+
+    for key, amt in totals.items():
+        if not isinstance(key, tuple):
+            continue
+
+        if len(key) == 3:
+            owner_type, _inventory, item_id = key
+        elif len(key) == 2:
+            owner_type, item_id = key
+        else:
+            continue
+
+        if item_id is None:
+            continue
+
+        row_key = (str(owner_type), str(item_id))
+        collapsed[row_key] = collapsed.get(row_key, 0) + int(amt)
+
     rows: List[Tuple[str, str, int]] = []
-    for (owner_type, item_id), amt in sorted(totals.items()):
+    for (owner_type, item_id), amt in sorted(collapsed.items()):
         rows.append((owner_type, item_id, int(amt)))
     return rows
 

@@ -148,6 +148,19 @@ run_initial_import() {
 
 run_initial_import
 
+active_root_sql="${DEC//\\/\\\\}"
+active_root_sql="${active_root_sql//\'/\\\'}"
+if ! maria -D "$DB_NAME" -N -e "
+ALTER TABLE nms_save_roots
+  MODIFY save_root VARCHAR(512) NOT NULL;
+
+INSERT INTO nms_save_roots(save_root, is_active)
+VALUES ('$active_root_sql', 1)
+ON DUPLICATE KEY UPDATE is_active = 1;
+" >"$LOGS/activate_save_root.$stamp.log" 2>&1; then
+  echo "[PIPE][WARN] Failed to activate save root; see $LOGS/activate_save_root.$stamp.log"
+fi
+
 # --- ledger -------------------------------------------------------------------
 INITIAL_TABLE="$(get_env NMS_DB_INITIAL_TABLE "nms_initial_items")"
 LEDGER_TABLE="$(get_env NMS_DB_LEDGER_TABLE  "nms_ledger_deltas")"
@@ -155,14 +168,25 @@ SESSION_MINUTES="$(get_env NMS_SESSION_MINUTES "120")"
 USE_MTIME="$(get_env NMS_LEDGER_USE_MTIME "")"
 
 echo "[PIPE] ledger compare -> $LEDGER_TABLE"
-python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
-  --saves "$clean_json" \
-  --baseline-db-table "$INITIAL_TABLE" \
-  --baseline-snapshot latest \
-  --db-write-ledger --db-env "$ROOT/.env.dbshim" --db-ledger-table "$LEDGER_TABLE" \
-  --session-minutes "$SESSION_MINUTES" \
-  ${USE_MTIME:+--use-mtime} \
-  >"$LOGS/ledger.$stamp.log" 2>&1
+ledger_log="$LOGS/ledger.$stamp.log"
+
+if grep -Eq '^[[:space:]]*pass[[:space:]]*(#.*)?$' "$ROOT/scripts/python/pipeline/ledger/cli_run.py"; then
+  echo "[PIPE][WARN] ledger compare skipped; ledger/cli_run.py currently contains a placeholder run_ledger()."
+  echo "[PIPE][WARN] inventory import completed successfully; ledger deltas require restoring the legacy run_ledger body."
+else
+  if ! PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 "$ROOT/scripts/python/pipeline/nms_resource_ledger_v3.py" \
+    --saves "$clean_json" \
+    --baseline-db-table "$INITIAL_TABLE" \
+    --baseline-snapshot latest \
+    --db-write-ledger --db-env "$ROOT/.env.dbshim" --db-ledger-table "$LEDGER_TABLE" \
+    --session-minutes "$SESSION_MINUTES" \
+    ${USE_MTIME:+--use-mtime} \
+    >"$ledger_log" 2>&1; then
+    echo "[PIPE][WARN] ledger compare failed; continuing after import."
+    echo "[PIPE][WARN] ledger log: $ledger_log"
+    tail -n 80 "$ledger_log" || true
+  fi
+fi
 
 echo "[PIPE] done."
 

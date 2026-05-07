@@ -46,7 +46,7 @@ venv/
 
 # --- PHP/Composer (if used later) ---
 vendor/
-
+docs/
 # --- Project caches & generated assets ---
 # AssistantApps package cache + downloaded language/data bundles
 .cache/

@@ -1,0 +1,20 @@
+body.theme-light .topbar {
+	background: #eef3f9;
+	border-bottom: 1px solid #d7e1ee;
+}
+
+body.theme-light .actions input[type="text"] {
+	background: #fff;
+	color: #12161c;
+	border-color: #d7e1ee;
+}
+
+body.theme-light .card {
+	background: #ffffff;
+	border-color: #d7e1ee;
+	box-shadow: 0 2px 10px rgba(0, 0, 0, .06);
+}
+
+body.theme-light .card .icon {
+	background: #f3f7fc;
+}
