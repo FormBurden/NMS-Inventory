@@ -6,6 +6,7 @@
 		catalogue: `${BASE}/api/item_meta.php`,
 		inventory: `${BASE}/api/inventory.php`,
 		settings: `${BASE}/api/settings.php`,
+		recent: `${BASE}/api/inventory.php`,
 		items: `${BASE}/data/items_local.json`,
 		icon: `${BASE}/api/icon.php`,
 		placeholder: "/assets/img/placeholder.png",

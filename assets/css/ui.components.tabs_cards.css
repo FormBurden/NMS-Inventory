@@ -1,12 +1,65 @@
 .tabs {
 	display: flex;
 	gap: 8px;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
 	padding: 8px 14px;
 	border-bottom: 1px solid #1c2733;
 	background: #0f141a;
 	position: sticky;
-	top: 44px;
+	top: 0;
 	z-index: 5;
+}
+
+.tabs-left,
+.tabs-right {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.tabs-right {
+	margin-left: auto;
+	justify-content: flex-end;
+}
+
+.stat-tab {
+	border-color: #26384a;
+}
+
+.recent-tab {
+	border-color: #3a3420;
+}
+
+.recent-session-bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
+	border-bottom: 1px solid #1c2733;
+	background: #0d1319;
+}
+
+.recent-session-bar[hidden] {
+	display: none;
+}
+
+.recent-session-bar label {
+	color: var(--muted);
+	font-weight: 700;
+}
+
+.recent-session-select {
+	min-width: 320px;
+	max-width: min(680px, 100%);
+	background: #0f151c;
+	color: var(--fg);
+	border: 1px solid #1c2733;
+	border-radius: 8px;
+	padding: 7px 10px;
+	font: inherit;
 }
 
 .tab {
@@ -28,6 +81,120 @@
 	background: #16202b;
 	color: var(--fg);
 	border-color: #2a3a4d;
+}
+
+.stat-card {
+	gap: 8px;
+}
+
+.stat-card .icon {
+	height: 112px;
+	align-items: center;
+	justify-content: center;
+}
+
+.stat-card .icon img {
+	max-width: 132px;
+	max-height: 132px;
+}
+
+.stat-card .meta {
+	align-items: flex-start;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.stat-card .rid {
+	width: 100%;
+	min-height: 20px;
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+	line-height: 1.25;
+}
+
+.stat-card .amt {
+	color: var(--muted);
+	font-weight: 600;
+}
+
+.stat-values {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	width: 100%;
+}
+
+.stat-value {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	border: 1px solid #1c2733;
+	border-radius: 8px;
+	padding: 6px 8px;
+	background: #0f151c;
+}
+
+.stat-label {
+	color: var(--muted);
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.stat-number {
+	color: var(--fg);
+	font-weight: 700;
+}
+
+.stat-source {
+	display: none;
+}
+
+.recent-card .icon {
+	height: 112px;
+}
+
+.recent-card .meta {
+	align-items: flex-start;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.recent-card .rid {
+	width: 100%;
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+	line-height: 1.25;
+}
+
+.recent-values {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	border: 1px solid #1c2733;
+	border-radius: 8px;
+	padding: 6px 8px;
+	background: #0f151c;
+}
+
+.recent-label {
+	color: var(--muted);
+	font-weight: 600;
+}
+
+.recent-delta {
+	font-weight: 800;
+}
+
+.recent-gain .recent-delta {
+	color: #8fd18f;
+}
+
+.recent-loss .recent-delta {
+	color: #e39a9a;
 }
 
 @media (max-width:520px) {

@@ -68,35 +68,39 @@ def _find_best_json(item: Dict[str, Any]) -> Optional[Path]:
     """
     Resolve the most useful JSON to aggregate, in order of preference:
       1) out_json (full-parse output) if present
-      2) cleaned JSON derived from decoded path: /decoded/<name>.json -> /cleaned/<name>.clean.json
-      3) source_path (decoded json) as a last resort
+      2) output/fullparse/<save>.full.json derived from decoded source_path
+      3) cleaned JSON derived from decoded path: /decoded/<name>.json -> /cleaned/<name>.clean.json
+      4) source_path (decoded json) as a last resort
     """
-    # Provided by manifest?
     out_json = item.get("out_json")
     if out_json:
         p = Path(out_json)
         if p.exists():
             return p
 
-    # Try to derive cleaned path from decoded source_path
     source = item.get("source_path")
     if source:
         sp = Path(source)
-        # /decoded/<name>.json -> /cleaned/<name>.clean.json
+
+        try:
+            root = Path(__file__).resolve().parents[4]
+            fullparse = root / "output" / "fullparse" / f"{sp.stem}.full.json"
+            if fullparse.exists():
+                return fullparse
+        except Exception:
+            pass
+
         try:
             parts = list(sp.parts)
             if "decoded" in parts:
                 parts[parts.index("decoded")] = "cleaned"
-                stem = sp.stem  # e.g., save2
+                stem = sp.stem
                 cleaned = Path(*parts[:-1]) / f"{stem}.clean.json"
                 if cleaned.exists():
                     return cleaned
         except Exception:
             pass
 
-    # Fallback: decoded json
-    if source:
-        sp = Path(source)
         if sp.exists():
             return sp
 
@@ -120,6 +124,8 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
         if s == "ship": return "Ship"
         if s == "vehicle": return "Vehicle"
         if s == "freighter": return "Freighter"
+        if s == "storage": return "Storage"
+        if s == "base": return "Base"
         return "Unknown"
 
     def norm_inv(s: str) -> str:
@@ -184,38 +190,43 @@ def _emit_initial_sql(json_path: Path, *, save_root: str, include_tech: bool = F
 
 def main() -> None:
     import sys
-    p = argparse.ArgumentParser(prog="nms-inventory-cli")
-    sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_init = sub.add_parser("initial_import", help="Generate baseline SQL for latest snapshot/items")
-    p_init.add_argument("--manifest", required=True, type=Path)
-    p_init.add_argument("--db-name", required=False)  # accepted but unused in SQL generation
-    p_init.add_argument("--include-tech", action="store_true", default=False)
-    p_init.add_argument("--use-mtime", action="store_true", default=False)
-    args = p.parse_args()
+    argv = sys.argv[1:]
+    if argv and argv[0] == "initial_import":
+        p = argparse.ArgumentParser(prog="nms-inventory-cli initial_import")
+        p.add_argument("cmd")
+        p.add_argument("--manifest", required=True, type=Path)
+        p.add_argument("--db-name", required=False)
+        p.add_argument("--include-tech", action="store_true", default=False)
+        p.add_argument("--use-mtime", action="store_true", default=False)
+        args = p.parse_args(argv)
 
-    if args.cmd == "initial_import":
         manifest = _load_manifest(args.manifest)
         items = manifest.get("items") or []
         if not items:
             print("/* no snapshot rows generated */")
             return
 
-        item0 = items[0]  # latest
+        item0 = items[0]
         json_path = _find_best_json(item0)
         if not json_path or not json_path.exists():
             print("/* no snapshot rows generated */")
             print(f"[initial_import] No usable JSON found for item: {item0}", file=sys.stderr)
             return
-        # Resolve save_root from manifest/item/full-parse metadata
+
         try:
             js_for_root = _read_json(json_path)
         except Exception:
             js_for_root = {}
         save_root = _infer_save_root(manifest, item0, js_for_root, json_path)
 
-        sql = _emit_initial_sql(json_path, save_root=save_root, include_tech=bool(args.include_tech), use_mtime=bool(args.use_mtime))
-        # Helpful diagnostics go to stderr; SQL only to stdout
+        sql = _emit_initial_sql(
+            json_path,
+            save_root=save_root,
+            include_tech=bool(args.include_tech),
+            use_mtime=bool(args.use_mtime),
+        )
+
         try:
             js = _read_json(json_path)
             totals = aggregate_inventory(js, include_tech=bool(args.include_tech))
@@ -225,6 +236,21 @@ def main() -> None:
 
         print(sql)
         return
+
+    p = argparse.ArgumentParser(prog="nms-inventory-ledger")
+    p.add_argument("--saves", required=False, type=Path)
+    p.add_argument("--baseline-db-table", default="nms_initial_items")
+    p.add_argument("--baseline-snapshot", default="latest")
+    p.add_argument("--db-write-ledger", action="store_true", default=False)
+    p.add_argument("--db-env", type=Path, default=Path(".env"))
+    p.add_argument("--db-ledger-table", default="nms_ledger_deltas")
+    p.add_argument("--session-minutes", type=int, default=120)
+    p.add_argument("--use-mtime", action="store_true", default=False)
+    p.add_argument("--include-tech", action="store_true", default=True)
+    args = p.parse_args(argv)
+
+    from scripts.python.pipeline.ledger.cli_run import run_ledger
+    run_ledger(args)
 
 if __name__ == "__main__":
     main()

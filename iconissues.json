@@ -1,0 +1,2430 @@
+{
+  "resource_id": "^ACCESS1",
+  "base_id": "ACCESS1",
+  "catalogue_id": "ACCESS1",
+  "display_name": "AtlasPass v1",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=ACCESS1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/constructedTechnology/91.png",
+  "appId": "conTech91"
+}
+{
+  "resource_id": "^AF_METAL",
+  "base_id": "AF_METAL",
+  "catalogue_id": "AF_METAL",
+  "display_name": "Tainted Metal",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=AF_METAL&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/62.png",
+  "appId": "raw62"
+}
+{
+  "resource_id": "^ALBUMENPEARL",
+  "base_id": "ALBUMENPEARL",
+  "catalogue_id": "ALBUMENPEARL",
+  "display_name": "Albumen Pearl",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALBUMENPEARL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/22.png",
+  "appId": "cur22"
+}
+{
+  "resource_id": "^ALLOY1",
+  "base_id": "ALLOY1",
+  "catalogue_id": "ALLOY1",
+  "display_name": "Aronium",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/71.png",
+  "appId": "prod71"
+}
+{
+  "resource_id": "^ALLOY2",
+  "base_id": "ALLOY2",
+  "catalogue_id": "ALLOY2",
+  "display_name": "Dirty Bronze",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/72.png",
+  "appId": "prod72"
+}
+{
+  "resource_id": "^ALLOY3",
+  "base_id": "ALLOY3",
+  "catalogue_id": "ALLOY3",
+  "display_name": "Herox",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY3&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/74.png",
+  "appId": "prod74"
+}
+{
+  "resource_id": "^ALLOY4",
+  "base_id": "ALLOY4",
+  "catalogue_id": "ALLOY4",
+  "display_name": "Lemmium",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY4&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/76.png",
+  "appId": "prod76"
+}
+{
+  "resource_id": "^ALLOY6",
+  "base_id": "ALLOY6",
+  "catalogue_id": "ALLOY6",
+  "display_name": "Grantine",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY6&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/73.png",
+  "appId": "prod73"
+}
+{
+  "resource_id": "^ALLOY7",
+  "base_id": "ALLOY7",
+  "catalogue_id": "ALLOY7",
+  "display_name": "Geodesite",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY7&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/77.png",
+  "appId": "prod77"
+}
+{
+  "resource_id": "^ALLOY8",
+  "base_id": "ALLOY8",
+  "catalogue_id": "ALLOY8",
+  "display_name": "Iridesite",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ALLOY8&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/78.png",
+  "appId": "prod78"
+}
+{
+  "resource_id": "^AM_HOUSING",
+  "base_id": "AM_HOUSING",
+  "catalogue_id": "AM_HOUSING",
+  "display_name": "Antimatter Housing",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=AM_HOUSING&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/2.png",
+  "appId": "prod2"
+}
+{
+  "resource_id": "^AMMO",
+  "base_id": "AMMO",
+  "catalogue_id": "AMMO",
+  "display_name": "Projectile Ammunition",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=AMMO&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/30.png",
+  "appId": "prod30"
+}
+{
+  "resource_id": "^ANTIMATTER",
+  "base_id": "ANTIMATTER",
+  "catalogue_id": "ANTIMATTER",
+  "display_name": "Antimatter",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=ANTIMATTER&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/1.png",
+  "appId": "prod1"
+}
+{
+  "resource_id": "^ASTEROID1",
+  "base_id": "ASTEROID1",
+  "catalogue_id": "ASTEROID1",
+  "display_name": "Silver",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=ASTEROID1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/32.png",
+  "appId": "raw32"
+}
+{
+  "resource_id": "^ASTEROID2",
+  "base_id": "ASTEROID2",
+  "catalogue_id": "ASTEROID2",
+  "display_name": "Gold",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=ASTEROID2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/33.png",
+  "appId": "raw33"
+}
+{
+  "resource_id": "^B_CON_7",
+  "base_id": "B_CON_7",
+  "catalogue_id": "B_CON_7",
+  "display_name": "Connector Module 7",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_CON_7&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_CON_8",
+  "base_id": "B_CON_8",
+  "catalogue_id": "B_CON_8",
+  "display_name": "Connector Module 8",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_CON_8&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_CON_9",
+  "base_id": "B_CON_9",
+  "catalogue_id": "B_CON_9",
+  "display_name": "Connector Module 9",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_CON_9&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_CON_L_0",
+  "base_id": "B_CON_L_0",
+  "catalogue_id": "B_CON_L_0",
+  "display_name": "Large Connector Module 0",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_CON_L_0&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_DECO_I",
+  "base_id": "B_DECO_I",
+  "catalogue_id": "B_DECO_I",
+  "display_name": "Decorative Module I",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_DECO_I&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_GEN_1",
+  "base_id": "B_GEN_1",
+  "catalogue_id": "B_GEN_1",
+  "display_name": "Generator Module 1",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_GEN_1&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_HAB_A",
+  "base_id": "B_HAB_A",
+  "catalogue_id": "B_HAB_A",
+  "display_name": "Habitation Module A",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_HAB_A&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_HAB_C",
+  "base_id": "B_HAB_C",
+  "catalogue_id": "B_HAB_C",
+  "display_name": "Habitation Module C",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_HAB_C&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_HAB1_A",
+  "base_id": "B_HAB1_A",
+  "catalogue_id": "B_HAB1_A",
+  "display_name": "Habitation Module 1A",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_HAB1_A&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_HAB1_B",
+  "base_id": "B_HAB1_B",
+  "catalogue_id": "B_HAB1_B",
+  "display_name": "Habitation Module 1B",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_HAB1_B&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_HAB1_C",
+  "base_id": "B_HAB1_C",
+  "catalogue_id": "B_HAB1_C",
+  "display_name": "Habitation Module 1C",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_HAB1_C&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_LND_A",
+  "base_id": "B_LND_A",
+  "catalogue_id": "B_LND_A",
+  "display_name": "Landing Structure A",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_LND_A&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_SHL_A",
+  "base_id": "B_SHL_A",
+  "catalogue_id": "B_SHL_A",
+  "display_name": "Shelter Module A",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_SHL_A&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_SHL_C",
+  "base_id": "B_SHL_C",
+  "catalogue_id": "B_SHL_C",
+  "display_name": "Shelter Module C",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_SHL_C&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_STR_H_N",
+  "base_id": "B_STR_H_N",
+  "catalogue_id": "B_STR_H_N",
+  "display_name": "Structural Module H North",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_STR_H_N&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_STR_S_N",
+  "base_id": "B_STR_S_N",
+  "catalogue_id": "B_STR_S_N",
+  "display_name": "Structural Module S North",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_STR_S_N&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_TRU_A",
+  "base_id": "B_TRU_A",
+  "catalogue_id": "B_TRU_A",
+  "display_name": "Truss Module A",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_TRU_A&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_TRU_D",
+  "base_id": "B_TRU_D",
+  "catalogue_id": "B_TRU_D",
+  "display_name": "Truss Module D",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_TRU_D&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_TUR_C",
+  "base_id": "B_TUR_C",
+  "catalogue_id": "B_TUR_C",
+  "display_name": "Tower Module C",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_TUR_C&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_WNG_G",
+  "base_id": "B_WNG_G",
+  "catalogue_id": "B_WNG_G",
+  "display_name": "Wing Module G",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_WNG_G&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^B_WNG_H",
+  "base_id": "B_WNG_H",
+  "catalogue_id": "B_WNG_H",
+  "display_name": "Wing Module H",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=B_WNG_H&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^BAIT_BASIC",
+  "base_id": "BAIT_BASIC",
+  "catalogue_id": "BAIT_BASIC",
+  "display_name": "Creature Pellets",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=BAIT_BASIC&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/122.png",
+  "appId": "cook122"
+}
+{
+  "resource_id": "^BIO",
+  "base_id": "BIO",
+  "catalogue_id": "BIO",
+  "display_name": "Amino Chamber",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=BIO&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/117.png",
+  "appId": "prod117"
+}
+{
+  "resource_id": "^BP_SALVAGE",
+  "base_id": "BP_SALVAGE",
+  "catalogue_id": "BP_SALVAGE",
+  "display_name": "Salvaged Data",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=BP_SALVAGE&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/constructedTechnology/90.png",
+  "appId": "conTech90"
+}
+{
+  "resource_id": "^BUILD_REFINER1",
+  "base_id": "BUILD_REFINER1",
+  "catalogue_id": "BUILD_REFINER1",
+  "display_name": "Portable Refiner",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=BUILD_REFINER1&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^BUILDSIGNAL",
+  "base_id": "BUILDSIGNAL",
+  "catalogue_id": "BUILDSIGNAL",
+  "display_name": "Signal Booster",
+  "kind": "Building",
+  "icon_url": "/api/icon.php?id=BUILDSIGNAL&type=Building",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^CARBON_SEAL",
+  "base_id": "CARBON_SEAL",
+  "catalogue_id": "CARBON_SEAL",
+  "display_name": "Hermetic Seal",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CARBON_SEAL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/5.png",
+  "appId": "prod5"
+}
+{
+  "resource_id": "^CASING",
+  "base_id": "CASING",
+  "catalogue_id": "CASING",
+  "display_name": "Metal Plating",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CASING&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/6.png",
+  "appId": "prod6"
+}
+{
+  "resource_id": "^CATALYST1",
+  "base_id": "CATALYST1",
+  "catalogue_id": "CATALYST1",
+  "display_name": "Sodium",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=CATALYST1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/12.png",
+  "appId": "raw12"
+}
+{
+  "resource_id": "^CATALYST2",
+  "base_id": "CATALYST2",
+  "catalogue_id": "CATALYST2",
+  "display_name": "Sodium Nitrate",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=CATALYST2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/13.png",
+  "appId": "raw13"
+}
+{
+  "resource_id": "^CAVE1",
+  "base_id": "CAVE1",
+  "catalogue_id": "CAVE1",
+  "display_name": "Cobalt",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=CAVE1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/14.png",
+  "appId": "raw14"
+}
+{
+  "resource_id": "^CAVE2",
+  "base_id": "CAVE2",
+  "catalogue_id": "CAVE2",
+  "display_name": "Ionized Cobalt",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=CAVE2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/15.png",
+  "appId": "raw15"
+}
+{
+  "resource_id": "^CAVECUBE",
+  "base_id": "CAVECUBE",
+  "catalogue_id": "CAVECUBE",
+  "display_name": "Vortex Cube",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CAVECUBE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/25.png",
+  "appId": "cur25"
+}
+{
+  "resource_id": "^CHART_HIVE",
+  "base_id": "CHART_HIVE",
+  "catalogue_id": "CHART_HIVE",
+  "display_name": "Sentinel Boundary Map",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CHART_HIVE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/150.png",
+  "appId": "prod150"
+}
+{
+  "resource_id": "^CHART_ROBOT",
+  "base_id": "CHART_ROBOT",
+  "catalogue_id": "CHART_ROBOT",
+  "display_name": "Echo Locator",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CHART_ROBOT&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/102.png",
+  "appId": "cur102"
+}
+{
+  "resource_id": "^CHART_TREASURE",
+  "base_id": "CHART_TREASURE",
+  "catalogue_id": "CHART_TREASURE",
+  "display_name": "Artifact Chart",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CHART_TREASURE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/other/2.png",
+  "appId": "other2"
+}
+{
+  "resource_id": "^CLAMPEARL",
+  "base_id": "CLAMPEARL",
+  "catalogue_id": "CLAMPEARL",
+  "display_name": "Living Pearl",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=CLAMPEARL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/17.png",
+  "appId": "cur17"
+}
+{
+  "resource_id": "^COMPOUND1",
+  "base_id": "COMPOUND1",
+  "catalogue_id": "COMPOUND1",
+  "display_name": "Organic Catalyst",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=COMPOUND1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/65.png",
+  "appId": "prod65"
+}
+{
+  "resource_id": "^COMPOUND2",
+  "base_id": "COMPOUND2",
+  "catalogue_id": "COMPOUND2",
+  "display_name": "Semiconductor",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=COMPOUND2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/64.png",
+  "appId": "prod64"
+}
+{
+  "resource_id": "^COMPOUND3",
+  "base_id": "COMPOUND3",
+  "catalogue_id": "COMPOUND3",
+  "display_name": "Hot Ice",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=COMPOUND3&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/62.png",
+  "appId": "prod62"
+}
+{
+  "resource_id": "^COMPOUND5",
+  "base_id": "COMPOUND5",
+  "catalogue_id": "COMPOUND5",
+  "display_name": "Superconductor",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=COMPOUND5&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/66.png",
+  "appId": "prod66"
+}
+{
+  "resource_id": "^COMPOUND6",
+  "base_id": "COMPOUND6",
+  "catalogue_id": "COMPOUND6",
+  "display_name": "Cryo-Pump",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=COMPOUND6&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/63.png",
+  "appId": "prod63"
+}
+{
+  "resource_id": "^COMPUTER",
+  "base_id": "COMPUTER",
+  "catalogue_id": "COMPUTER",
+  "display_name": "Quantum Computer",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=COMPUTER&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/114.png",
+  "appId": "prod114"
+}
+{
+  "resource_id": "^CREATURE1",
+  "base_id": "CREATURE1",
+  "catalogue_id": "CREATURE1",
+  "display_name": "Mordite",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=CREATURE1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/30.png",
+  "appId": "raw30"
+}
+{
+  "resource_id": "^DRONE_BROKEN",
+  "base_id": "DRONE_BROKEN",
+  "catalogue_id": "DRONE_BROKEN",
+  "display_name": "Undamaged Drone Shell",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=DRONE_BROKEN&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/151.png",
+  "appId": "prod151"
+}
+{
+  "resource_id": "^DRONE_FRIEND",
+  "base_id": "DRONE_FRIEND",
+  "catalogue_id": "DRONE_FRIEND",
+  "display_name": "Sentinel Flare (Off)",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=DRONE_FRIEND&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/82.png",
+  "appId": "cur82"
+}
+{
+  "resource_id": "^DRONE_SALVAGE",
+  "base_id": "DRONE_SALVAGE",
+  "catalogue_id": "DRONE_SALVAGE",
+  "display_name": "Inverted Mirror",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=DRONE_SALVAGE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/100.png",
+  "appId": "cur100"
+}
+{
+  "resource_id": "^DRONE_SHARD",
+  "base_id": "DRONE_SHARD",
+  "catalogue_id": "DRONE_SHARD",
+  "display_name": "Radiant Shard",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=DRONE_SHARD&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/101.png",
+  "appId": "cur101"
+}
+{
+  "resource_id": "^EGG1",
+  "base_id": "EGG1",
+  "catalogue_id": "EGG1",
+  "display_name": "Companion Egg",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=EGG1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/other/93.png",
+  "appId": "other93"
+}
+{
+  "resource_id": "^EX_GREEN",
+  "base_id": "EX_GREEN",
+  "catalogue_id": "EX_GREEN",
+  "display_name": "Activated Emeril",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=EX_GREEN&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/40.png",
+  "appId": "raw40"
+}
+{
+  "resource_id": "^EXP_CURIO1",
+  "base_id": "EXP_CURIO1",
+  "catalogue_id": "EXP_CURIO1",
+  "display_name": "Korvax Casing",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=EXP_CURIO1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/39.png",
+  "appId": "cur39"
+}
+{
+  "resource_id": "^EXP_CURIO2",
+  "base_id": "EXP_CURIO2",
+  "catalogue_id": "EXP_CURIO2",
+  "display_name": "Convergence Cube",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=EXP_CURIO2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/40.png",
+  "appId": "cur40"
+}
+{
+  "resource_id": "^FARMPROD2",
+  "base_id": "FARMPROD2",
+  "catalogue_id": "FARMPROD2",
+  "display_name": "Lubricant",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FARMPROD2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/57.png",
+  "appId": "prod57"
+}
+{
+  "resource_id": "^FARMPROD3",
+  "base_id": "FARMPROD3",
+  "catalogue_id": "FARMPROD3",
+  "display_name": "Glass",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FARMPROD3&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/54.png",
+  "appId": "prod54"
+}
+{
+  "resource_id": "^FARMPROD5",
+  "base_id": "FARMPROD5",
+  "catalogue_id": "FARMPROD5",
+  "display_name": "Poly Fiber",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FARMPROD5&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/52.png",
+  "appId": "prod52"
+}
+{
+  "resource_id": "^FISHCORE",
+  "base_id": "FISHCORE",
+  "catalogue_id": "FISHCORE",
+  "display_name": "Hadal Core",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FISHCORE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/19.png",
+  "appId": "cur19"
+}
+{
+  "resource_id": "^FOOD_M_BUG",
+  "base_id": "FOOD_M_BUG",
+  "catalogue_id": "FOOD_M_BUG",
+  "display_name": "Juicy Thorax",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_BUG&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/125.png",
+  "appId": "cook313"
+}
+{
+  "resource_id": "^FOOD_M_CAT",
+  "base_id": "FOOD_M_CAT",
+  "catalogue_id": "FOOD_M_CAT",
+  "display_name": "Feline Liver",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_CAT&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/30.png",
+  "appId": "cook30"
+}
+{
+  "resource_id": "^FOOD_M_COW",
+  "base_id": "FOOD_M_COW",
+  "catalogue_id": "FOOD_M_COW",
+  "display_name": "Raw Steak",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_COW&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/34.png",
+  "appId": "cook34"
+}
+{
+  "resource_id": "^FOOD_M_CRAB",
+  "base_id": "FOOD_M_CRAB",
+  "catalogue_id": "FOOD_M_CRAB",
+  "display_name": "Leg Meat",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_CRAB&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/32.png",
+  "appId": "cook32"
+}
+{
+  "resource_id": "^FOOD_M_FISH",
+  "base_id": "FOOD_M_FISH",
+  "catalogue_id": "FOOD_M_FISH",
+  "display_name": "Salty Chunks",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_FISH&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/151.png",
+  "appId": "cook151"
+}
+{
+  "resource_id": "^FOOD_M_FLYER",
+  "base_id": "FOOD_M_FLYER",
+  "catalogue_id": "FOOD_M_FLYER",
+  "display_name": "Meaty Wings",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_FLYER&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/39.png",
+  "appId": "cook39"
+}
+{
+  "resource_id": "^FOOD_M_GRUB",
+  "base_id": "FOOD_M_GRUB",
+  "catalogue_id": "FOOD_M_GRUB",
+  "display_name": "Juicy Grub",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_GRUB&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/312.png",
+  "appId": "cook312"
+}
+{
+  "resource_id": "^FOOD_M_HORROR",
+  "base_id": "FOOD_M_HORROR",
+  "catalogue_id": "FOOD_M_HORROR",
+  "display_name": "Rancid Flesh",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_HORROR&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/124.png",
+  "appId": "cook311"
+}
+{
+  "resource_id": "^FOOD_M_MEAT",
+  "base_id": "FOOD_M_MEAT",
+  "catalogue_id": "FOOD_M_MEAT",
+  "display_name": "Meaty Chunks",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_MEAT&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/29.png",
+  "appId": "cook29"
+}
+{
+  "resource_id": "^FOOD_M_REX",
+  "base_id": "FOOD_M_REX",
+  "catalogue_id": "FOOD_M_REX",
+  "display_name": "Scaly Meat",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_REX&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/33.png",
+  "appId": "cook33"
+}
+{
+  "resource_id": "^FOOD_M_STRIDER",
+  "base_id": "FOOD_M_STRIDER",
+  "catalogue_id": "FOOD_M_STRIDER",
+  "display_name": "Strider Sausage",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_M_STRIDER&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/35.png",
+  "appId": "cook35"
+}
+{
+  "resource_id": "^FOOD_P_ALL1",
+  "base_id": "FOOD_P_ALL1",
+  "catalogue_id": "FOOD_P_ALL1",
+  "display_name": "Heptaploid Wheat",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_ALL1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/20.png",
+  "appId": "cook20"
+}
+{
+  "resource_id": "^FOOD_P_ALL2",
+  "base_id": "FOOD_P_ALL2",
+  "catalogue_id": "FOOD_P_ALL2",
+  "display_name": "Sweetroot",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_ALL2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/27.png",
+  "appId": "cook27"
+}
+{
+  "resource_id": "^FOOD_P_ALL3",
+  "base_id": "FOOD_P_ALL3",
+  "catalogue_id": "FOOD_P_ALL3",
+  "display_name": "Pulpy Roots",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_ALL3&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/25.png",
+  "appId": "cook25"
+}
+{
+  "resource_id": "^FOOD_P_CAVE",
+  "base_id": "FOOD_P_CAVE",
+  "catalogue_id": "FOOD_P_CAVE",
+  "display_name": "Marrow Flesh",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_CAVE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/7.png",
+  "appId": "cook7"
+}
+{
+  "resource_id": "^FOOD_P_COLDFARM",
+  "base_id": "FOOD_P_COLDFARM",
+  "catalogue_id": "FOOD_P_COLDFARM",
+  "display_name": "Glass Grains",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_COLDFARM&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/3.png",
+  "appId": "cook3"
+}
+{
+  "resource_id": "^FOOD_P_DUSTFARM",
+  "base_id": "FOOD_P_DUSTFARM",
+  "catalogue_id": "FOOD_P_DUSTFARM",
+  "display_name": "Cactus Nectar",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_DUSTFARM&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/1.png",
+  "appId": "cook1"
+}
+{
+  "resource_id": "^FOOD_P_GLITCH",
+  "base_id": "FOOD_P_GLITCH",
+  "catalogue_id": "FOOD_P_GLITCH",
+  "display_name": "Hexaberry",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_GLITCH&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/21.png",
+  "appId": "cook21"
+}
+{
+  "resource_id": "^FOOD_P_LUSHFARM",
+  "base_id": "FOOD_P_LUSHFARM",
+  "catalogue_id": "FOOD_P_LUSHFARM",
+  "display_name": "Pilgrimberry",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_LUSHFARM&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/9.png",
+  "appId": "cook9"
+}
+{
+  "resource_id": "^FOOD_P_LUSHWILD",
+  "base_id": "FOOD_P_LUSHWILD",
+  "catalogue_id": "FOOD_P_LUSHWILD",
+  "display_name": "Impulse Beans",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_LUSHWILD&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/22.png",
+  "appId": "cook22"
+}
+{
+  "resource_id": "^FOOD_P_RADFARM",
+  "base_id": "FOOD_P_RADFARM",
+  "catalogue_id": "FOOD_P_RADFARM",
+  "display_name": "Sievert Beans",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_RADFARM&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/5.png",
+  "appId": "cook5"
+}
+{
+  "resource_id": "^FOOD_P_TOXFARM",
+  "base_id": "FOOD_P_TOXFARM",
+  "catalogue_id": "FOOD_P_TOXFARM",
+  "display_name": "Non-Toxic Mushroom",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_TOXFARM&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/4.png",
+  "appId": "cook4"
+}
+{
+  "resource_id": "^FOOD_P_WATER",
+  "base_id": "FOOD_P_WATER",
+  "catalogue_id": "FOOD_P_WATER",
+  "display_name": "Kelp Rice",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_P_WATER&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/6.png",
+  "appId": "cook6"
+}
+{
+  "resource_id": "^FOOD_R_SUGAR",
+  "base_id": "FOOD_R_SUGAR",
+  "catalogue_id": "FOOD_R_SUGAR",
+  "display_name": "Processed Sugar",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_R_SUGAR&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/10.png",
+  "appId": "cook10"
+}
+{
+  "resource_id": "^FOOD_V_BLOB",
+  "base_id": "FOOD_V_BLOB",
+  "catalogue_id": "FOOD_V_BLOB",
+  "display_name": "Sticky 'Honey'",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_V_BLOB&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/48.png",
+  "appId": "cook48"
+}
+{
+  "resource_id": "^FOOD_V_PCAT",
+  "base_id": "FOOD_V_PCAT",
+  "catalogue_id": "FOOD_V_PCAT",
+  "display_name": "Syrupy Nectar",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=FOOD_V_PCAT&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/cooking/48.png",
+  "appId": "cook310"
+}
+{
+  "resource_id": "^FOS_BI_TAIL_AN",
+  "base_id": "FOS_BI_TAIL_AN",
+  "catalogue_id": "FOS_BI_TAIL_AN",
+  "display_name": "FOS_BI_TAIL_AN",
+  "kind": null,
+  "icon_url": "/api/icon.php?id=FOS_BI_TAIL_AN",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^FOS_HEAD_KG",
+  "base_id": "FOS_HEAD_KG",
+  "catalogue_id": "FOS_HEAD_KG",
+  "display_name": "FOS_HEAD_KG",
+  "kind": null,
+  "icon_url": "/api/icon.php?id=FOS_HEAD_KG",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^FOS_LIMBS_F",
+  "base_id": "FOS_LIMBS_F",
+  "catalogue_id": "FOS_LIMBS_F",
+  "display_name": "FOS_LIMBS_F",
+  "kind": null,
+  "icon_url": "/api/icon.php?id=FOS_LIMBS_F",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^FUEL1",
+  "base_id": "FUEL1",
+  "catalogue_id": "FUEL1",
+  "display_name": "Carbon",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=FUEL1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/1.png",
+  "appId": "raw1"
+}
+{
+  "resource_id": "^FUEL2",
+  "base_id": "FUEL2",
+  "catalogue_id": "FUEL2",
+  "display_name": "Condensed Carbon",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=FUEL2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/2.png",
+  "appId": "raw2"
+}
+{
+  "resource_id": "^GAS2",
+  "base_id": "GAS2",
+  "catalogue_id": "GAS2",
+  "display_name": "Radon",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=GAS2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/36.png",
+  "appId": "raw36"
+}
+{
+  "resource_id": "^GAS3",
+  "base_id": "GAS3",
+  "catalogue_id": "GAS3",
+  "display_name": "Nitrogen",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=GAS3&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/37.png",
+  "appId": "raw37"
+}
+{
+  "resource_id": "^GEODE_ASTEROID",
+  "base_id": "GEODE_ASTEROID",
+  "catalogue_id": "GEODE_ASTEROID",
+  "display_name": "Gold Nugget",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GEODE_ASTEROID&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/31.png",
+  "appId": "cur31"
+}
+{
+  "resource_id": "^GEODE_CAVE",
+  "base_id": "GEODE_CAVE",
+  "catalogue_id": "GEODE_CAVE",
+  "display_name": "Geode",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GEODE_CAVE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/28.png",
+  "appId": "prod119"
+}
+{
+  "resource_id": "^GEODE_CRYSTAL",
+  "base_id": "GEODE_CRYSTAL",
+  "catalogue_id": "GEODE_CRYSTAL",
+  "display_name": "Crystal Fragment",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GEODE_CRYSTAL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/29.png",
+  "appId": "cur29"
+}
+{
+  "resource_id": "^GEODE_LAND",
+  "base_id": "GEODE_LAND",
+  "catalogue_id": "GEODE_LAND",
+  "display_name": "Geode",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GEODE_LAND&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/28.png",
+  "appId": "cur28"
+}
+{
+  "resource_id": "^GEODE_SPACE",
+  "base_id": "GEODE_SPACE",
+  "catalogue_id": "GEODE_SPACE",
+  "display_name": "Tritium Hypercluster",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GEODE_SPACE&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/30.png",
+  "appId": "cur30"
+}
+{
+  "resource_id": "^GRAVBALL",
+  "base_id": "GRAVBALL",
+  "catalogue_id": "GRAVBALL",
+  "display_name": "Gravitino Ball",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GRAVBALL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/23.png",
+  "appId": "cur23"
+}
+{
+  "resource_id": "^GRENFUEL1",
+  "base_id": "GRENFUEL1",
+  "catalogue_id": "GRENFUEL1",
+  "display_name": "Unstable Plasma",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=GRENFUEL1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/19.png",
+  "appId": "prod19"
+}
+{
+  "resource_id": "^HYDRALIC",
+  "base_id": "HYDRALIC",
+  "catalogue_id": "HYDRALIC",
+  "display_name": "Hydraulic Wiring",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=HYDRALIC&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/113.png",
+  "appId": "prod113"
+}
+{
+  "resource_id": "^HYPERFUEL1",
+  "base_id": "HYPERFUEL1",
+  "catalogue_id": "HYPERFUEL1",
+  "display_name": "Warp Cell",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=HYPERFUEL1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/17.png",
+  "appId": "prod17"
+}
+{
+  "resource_id": "^HYPERFUEL2",
+  "base_id": "HYPERFUEL2",
+  "catalogue_id": "HYPERFUEL2",
+  "display_name": "Warp Hypercore",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=HYPERFUEL2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/18.png",
+  "appId": "prod18"
+}
+{
+  "resource_id": "^JELLY",
+  "base_id": "JELLY",
+  "catalogue_id": "JELLY",
+  "display_name": "Di-hydrogen Jelly",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=JELLY&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/11.png",
+  "appId": "prod11"
+}
+{
+  "resource_id": "^LAND1",
+  "base_id": "LAND1",
+  "catalogue_id": "LAND1",
+  "display_name": "Ferrite Dust",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=LAND1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/8.png",
+  "appId": "raw8"
+}
+{
+  "resource_id": "^LAND2",
+  "base_id": "LAND2",
+  "catalogue_id": "LAND2",
+  "display_name": "Pure Ferrite",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=LAND2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/9.png",
+  "appId": "raw9"
+}
+{
+  "resource_id": "^LAND3",
+  "base_id": "LAND3",
+  "catalogue_id": "LAND3",
+  "display_name": "Magnetized Ferrite",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=LAND3&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/10.png",
+  "appId": "raw10"
+}
+{
+  "resource_id": "^LAUNCHFUEL",
+  "base_id": "LAUNCHFUEL",
+  "catalogue_id": "LAUNCHFUEL",
+  "display_name": "Starship Launch Fuel",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=LAUNCHFUEL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/28.png",
+  "appId": "prod28"
+}
+{
+  "resource_id": "^LAUNCHSUB",
+  "base_id": "LAUNCHSUB",
+  "catalogue_id": "LAUNCHSUB",
+  "display_name": "Di-hydrogen",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=LAUNCHSUB&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/5.png",
+  "appId": "raw5"
+}
+{
+  "resource_id": "^LUSH1",
+  "base_id": "LUSH1",
+  "catalogue_id": "LUSH1",
+  "display_name": "Paraffinium",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=LUSH1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/24.png",
+  "appId": "raw24"
+}
+{
+  "resource_id": "^MAGNET",
+  "base_id": "MAGNET",
+  "catalogue_id": "MAGNET",
+  "display_name": "Magnetic Resonator",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=MAGNET&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/115.png",
+  "appId": "prod115"
+}
+{
+  "resource_id": "^MEGAPROD1",
+  "base_id": "MEGAPROD1",
+  "catalogue_id": "MEGAPROD1",
+  "display_name": "Portable Reactor",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=MEGAPROD1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/69.png",
+  "appId": "prod69"
+}
+{
+  "resource_id": "^MEGAPROD2",
+  "base_id": "MEGAPROD2",
+  "catalogue_id": "MEGAPROD2",
+  "display_name": "Quantum Processor",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=MEGAPROD2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/70.png",
+  "appId": "prod70"
+}
+{
+  "resource_id": "^MICROCHIP",
+  "base_id": "MICROCHIP",
+  "catalogue_id": "MICROCHIP",
+  "display_name": "Microprocessor",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=MICROCHIP&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/7.png",
+  "appId": "prod7"
+}
+{
+  "resource_id": "^MIRROR",
+  "base_id": "MIRROR",
+  "catalogue_id": "MIRROR",
+  "display_name": "Solar Mirror",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=MIRROR&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/116.png",
+  "appId": "prod116"
+}
+{
+  "resource_id": "^NANOTUBES",
+  "base_id": "NANOTUBES",
+  "catalogue_id": "NANOTUBES",
+  "display_name": "Carbon Nanotubes",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=NANOTUBES&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/3.png",
+  "appId": "prod3"
+}
+{
+  "resource_id": "^NAV_DATA",
+  "base_id": "NAV_DATA",
+  "catalogue_id": "NAV_DATA",
+  "display_name": "Navigation Data",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=NAV_DATA&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/constructedTechnology/100.png",
+  "appId": "conTech100"
+}
+{
+  "resource_id": "^NAV_DATA_DROP",
+  "base_id": "NAV_DATA_DROP",
+  "catalogue_id": "NAV_DATA_DROP",
+  "display_name": "Exosuit Upgrade Chart",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=NAV_DATA_DROP&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/constructedTechnology/101.png",
+  "appId": "conTech101"
+}
+{
+  "resource_id": "^OXYGEN",
+  "base_id": "OXYGEN",
+  "catalogue_id": "OXYGEN",
+  "display_name": "Oxygen",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=OXYGEN&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/3.png",
+  "appId": "raw3"
+}
+{
+  "resource_id": "^PIRATE_PROD",
+  "base_id": "PIRATE_PROD",
+  "catalogue_id": "PIRATE_PROD",
+  "display_name": "Pirate Transponder",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=PIRATE_PROD&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/103.png",
+  "appId": "cur103"
+}
+{
+  "resource_id": "^PLANT_CAVE",
+  "base_id": "PLANT_CAVE",
+  "catalogue_id": "PLANT_CAVE",
+  "display_name": "Marrow Bulb",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_CAVE&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/48.png",
+  "appId": "raw48"
+}
+{
+  "resource_id": "^PLANT_DUST",
+  "base_id": "PLANT_DUST",
+  "catalogue_id": "PLANT_DUST",
+  "display_name": "Cactus Flesh",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_DUST&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/45.png",
+  "appId": "raw45"
+}
+{
+  "resource_id": "^PLANT_HOT",
+  "base_id": "PLANT_HOT",
+  "catalogue_id": "PLANT_HOT",
+  "display_name": "Solanium",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_HOT&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/46.png",
+  "appId": "raw46"
+}
+{
+  "resource_id": "^PLANT_LUSH",
+  "base_id": "PLANT_LUSH",
+  "catalogue_id": "PLANT_LUSH",
+  "display_name": "Star Bulb",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_LUSH&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/47.png",
+  "appId": "raw47"
+}
+{
+  "resource_id": "^PLANT_POOP",
+  "base_id": "PLANT_POOP",
+  "catalogue_id": "PLANT_POOP",
+  "display_name": "Faecium",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_POOP&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/50.png",
+  "appId": "raw50"
+}
+{
+  "resource_id": "^PLANT_RADIO",
+  "base_id": "PLANT_RADIO",
+  "catalogue_id": "PLANT_RADIO",
+  "display_name": "Gamma Root",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_RADIO&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/44.png",
+  "appId": "raw44"
+}
+{
+  "resource_id": "^PLANT_SNOW",
+  "base_id": "PLANT_SNOW",
+  "catalogue_id": "PLANT_SNOW",
+  "display_name": "Frost Crystal",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_SNOW&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/43.png",
+  "appId": "raw43"
+}
+{
+  "resource_id": "^PLANT_TOXIC",
+  "base_id": "PLANT_TOXIC",
+  "catalogue_id": "PLANT_TOXIC",
+  "display_name": "Fungal Mold",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_TOXIC&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/42.png",
+  "appId": "raw42"
+}
+{
+  "resource_id": "^PLANT_WATER",
+  "base_id": "PLANT_WATER",
+  "catalogue_id": "PLANT_WATER",
+  "display_name": "Kelp Sac",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=PLANT_WATER&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/49.png",
+  "appId": "raw49"
+}
+{
+  "resource_id": "^POWERCELL",
+  "base_id": "POWERCELL",
+  "catalogue_id": "POWERCELL",
+  "display_name": "Ion Battery",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=POWERCELL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/20.png",
+  "appId": "prod20"
+}
+{
+  "resource_id": "^PROC_TOOL#03319",
+  "base_id": "PROC_TOOL",
+  "catalogue_id": "PROC_TOOL",
+  "display_name": "Procedural Multi-Tool Item",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=PROC_TOOL&type=Product",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^PRODFUEL2",
+  "base_id": "PRODFUEL2",
+  "catalogue_id": "PRODFUEL2",
+  "display_name": "Life Support Gel",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=PRODFUEL2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/23.png",
+  "appId": "prod23"
+}
+{
+  "resource_id": "^QUAD_PROD",
+  "base_id": "QUAD_PROD",
+  "catalogue_id": "QUAD_PROD",
+  "display_name": "Quad Servo",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=QUAD_PROD&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/1.png",
+  "appId": "cur1"
+}
+{
+  "resource_id": "^REACTION1",
+  "base_id": "REACTION1",
+  "catalogue_id": "REACTION1",
+  "display_name": "Thermic Condensate",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=REACTION1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/61.png",
+  "appId": "prod61"
+}
+{
+  "resource_id": "^REACTION2",
+  "base_id": "REACTION2",
+  "catalogue_id": "REACTION2",
+  "display_name": "Enriched Carbon",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=REACTION2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/59.png",
+  "appId": "prod59"
+}
+{
+  "resource_id": "^REACTION3",
+  "base_id": "REACTION3",
+  "catalogue_id": "REACTION3",
+  "display_name": "Nitrogen Salt",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=REACTION3&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/60.png",
+  "appId": "prod60"
+}
+{
+  "resource_id": "^RED2",
+  "base_id": "RED2",
+  "catalogue_id": "RED2",
+  "display_name": "Cadmium",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=RED2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/20.png",
+  "appId": "raw20"
+}
+{
+  "resource_id": "^REPAIRKIT",
+  "base_id": "REPAIRKIT",
+  "catalogue_id": "REPAIRKIT",
+  "display_name": "Repair Kit",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=REPAIRKIT&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/99.png",
+  "appId": "prod99"
+}
+{
+  "resource_id": "^ROBOT1",
+  "base_id": "ROBOT1",
+  "catalogue_id": "ROBOT1",
+  "display_name": "Pugneum",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=ROBOT1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/31.png",
+  "appId": "raw31"
+}
+{
+  "resource_id": "^ROBOT2",
+  "base_id": "ROBOT2",
+  "catalogue_id": "ROBOT2",
+  "display_name": "Atlantideum",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=ROBOT2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/72.png",
+  "appId": "raw72"
+}
+{
+  "resource_id": "^ROCKETSUB",
+  "base_id": "ROCKETSUB",
+  "catalogue_id": "ROCKETSUB",
+  "display_name": "Tritium",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=ROCKETSUB&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/7.png",
+  "appId": "raw7"
+}
+{
+  "resource_id": "^RUINSUB",
+  "base_id": "RUINSUB",
+  "catalogue_id": "RUINSUB",
+  "display_name": "Polished Stone",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=RUINSUB&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/76.png",
+  "appId": "raw76"
+}
+{
+  "resource_id": "^SALVAGE_TECH6",
+  "base_id": "SALVAGE_TECH6",
+  "catalogue_id": "SALVAGE_TECH6",
+  "display_name": "Spool of Nano-Cables",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=SALVAGE_TECH6&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/other/41.png",
+  "appId": "other41"
+}
+{
+  "resource_id": "^SALVAGE_TECH7",
+  "base_id": "SALVAGE_TECH7",
+  "catalogue_id": "SALVAGE_TECH7",
+  "display_name": "Recycled Circuitry",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=SALVAGE_TECH7&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/5.png",
+  "appId": "other42"
+}
+{
+  "resource_id": "^SALVAGE_TECH8",
+  "base_id": "SALVAGE_TECH8",
+  "catalogue_id": "SALVAGE_TECH8",
+  "display_name": "Subatomic Regulators",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=SALVAGE_TECH8&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/27.png",
+  "appId": "other43"
+}
+{
+  "resource_id": "^SALVAGE_TECH9",
+  "base_id": "SALVAGE_TECH9",
+  "catalogue_id": "SALVAGE_TECH9",
+  "display_name": "Compressed Indium Scraps",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=SALVAGE_TECH9&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/8.png",
+  "appId": "other44"
+}
+{
+  "resource_id": "^SENTINEL_LOOT",
+  "base_id": "SENTINEL_LOOT",
+  "catalogue_id": "SENTINEL_LOOT",
+  "display_name": "Salvaged Glass",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=SENTINEL_LOOT&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/80.png",
+  "appId": "cur80"
+}
+{
+  "resource_id": "^SPACEGUNK1",
+  "base_id": "SPACEGUNK1",
+  "catalogue_id": "SPACEGUNK1",
+  "display_name": "Residual Goop",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=SPACEGUNK1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/51.png",
+  "appId": "raw51"
+}
+{
+  "resource_id": "^SPACEGUNK4",
+  "base_id": "SPACEGUNK4",
+  "catalogue_id": "SPACEGUNK4",
+  "display_name": "Living Slime",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=SPACEGUNK4&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/54.png",
+  "appId": "raw54"
+}
+{
+  "resource_id": "^SPACEGUNK5",
+  "base_id": "SPACEGUNK5",
+  "catalogue_id": "SPACEGUNK5",
+  "display_name": "Viscous Fluids",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=SPACEGUNK5&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/55.png",
+  "appId": "raw55"
+}
+{
+  "resource_id": "^SPIDER_PROD",
+  "base_id": "SPIDER_PROD",
+  "catalogue_id": "SPIDER_PROD",
+  "display_name": "Crystallized Heart",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=SPIDER_PROD&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/97.png",
+  "appId": "cur97"
+}
+{
+  "resource_id": "^STELLAR2",
+  "base_id": "STELLAR2",
+  "catalogue_id": "STELLAR2",
+  "display_name": "Chromatic Metal",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=STELLAR2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/23.png",
+  "appId": "raw23"
+}
+{
+  "resource_id": "^STORM_CRYSTAL",
+  "base_id": "STORM_CRYSTAL",
+  "catalogue_id": "STORM_CRYSTAL",
+  "display_name": "Storm Crystal",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=STORM_CRYSTAL&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/21.png",
+  "appId": "cur21"
+}
+{
+  "resource_id": "^TECH_COMP",
+  "base_id": "TECH_COMP",
+  "catalogue_id": "TECH_COMP",
+  "display_name": "Wiring Loom",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TECH_COMP&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/81.png",
+  "appId": "prod81"
+}
+{
+  "resource_id": "^TRA_COMMODITY2",
+  "base_id": "TRA_COMMODITY2",
+  "catalogue_id": "TRA_COMMODITY2",
+  "display_name": "Star Silk",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_COMMODITY2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/26.png",
+  "appId": "trade26"
+}
+{
+  "resource_id": "^TRA_COMPONENT1",
+  "base_id": "TRA_COMPONENT1",
+  "catalogue_id": "TRA_COMPONENT1",
+  "display_name": "Enormous Metal Cog",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_COMPONENT1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/31.png",
+  "appId": "trade31"
+}
+{
+  "resource_id": "^TRA_CURIO1",
+  "base_id": "TRA_CURIO1",
+  "catalogue_id": "TRA_CURIO1",
+  "display_name": "Gek Relic",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_CURIO1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/35.png",
+  "appId": "cur35"
+}
+{
+  "resource_id": "^TRA_ENERGY5",
+  "base_id": "TRA_ENERGY5",
+  "catalogue_id": "TRA_ENERGY5",
+  "display_name": "Fusion Core",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_ENERGY5&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/10.png",
+  "appId": "trade10"
+}
+{
+  "resource_id": "^TRA_EXOTICS1",
+  "base_id": "TRA_EXOTICS1",
+  "catalogue_id": "TRA_EXOTICS1",
+  "display_name": "De-Scented Bottles",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_EXOTICS1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/11.png",
+  "appId": "trade11"
+}
+{
+  "resource_id": "^TRA_EXOTICS2",
+  "base_id": "TRA_EXOTICS2",
+  "catalogue_id": "TRA_EXOTICS2",
+  "display_name": "Neutron Microscope",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_EXOTICS2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/12.png",
+  "appId": "trade12"
+}
+{
+  "resource_id": "^TRA_EXOTICS4",
+  "base_id": "TRA_EXOTICS4",
+  "catalogue_id": "TRA_EXOTICS4",
+  "display_name": "Organic Piping",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_EXOTICS4&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/14.png",
+  "appId": "trade14"
+}
+{
+  "resource_id": "^TRA_EXOTICS5",
+  "base_id": "TRA_EXOTICS5",
+  "catalogue_id": "TRA_EXOTICS5",
+  "display_name": "Neural Duct",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_EXOTICS5&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/15.png",
+  "appId": "trade15"
+}
+{
+  "resource_id": "^TRA_MINERALS1",
+  "base_id": "TRA_MINERALS1",
+  "catalogue_id": "TRA_MINERALS1",
+  "display_name": "Dirt",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_MINERALS1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/16.png",
+  "appId": "trade16"
+}
+{
+  "resource_id": "^TRA_MINERALS2",
+  "base_id": "TRA_MINERALS2",
+  "catalogue_id": "TRA_MINERALS2",
+  "display_name": "Unrefined Pyrite Grease",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_MINERALS2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/17.png",
+  "appId": "trade17"
+}
+{
+  "resource_id": "^TRA_TECH1",
+  "base_id": "TRA_TECH1",
+  "catalogue_id": "TRA_TECH1",
+  "display_name": "Decommissioned Circuits",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_TECH1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/21.png",
+  "appId": "trade21"
+}
+{
+  "resource_id": "^TRA_TECH2",
+  "base_id": "TRA_TECH2",
+  "catalogue_id": "TRA_TECH2",
+  "display_name": "Welding Soap",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_TECH2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/22.png",
+  "appId": "trade22"
+}
+{
+  "resource_id": "^TRA_TECH3",
+  "base_id": "TRA_TECH3",
+  "catalogue_id": "TRA_TECH3",
+  "display_name": "Ion Capacitor",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_TECH3&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/23.png",
+  "appId": "trade23"
+}
+{
+  "resource_id": "^TRA_TECH4",
+  "base_id": "TRA_TECH4",
+  "catalogue_id": "TRA_TECH4",
+  "display_name": "Autonomous Positioning Unit",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_TECH4&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/24.png",
+  "appId": "trade24"
+}
+{
+  "resource_id": "^TRA_TECH5",
+  "base_id": "TRA_TECH5",
+  "catalogue_id": "TRA_TECH5",
+  "display_name": "Quantum Accelerator",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=TRA_TECH5&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/25.png",
+  "appId": "trade25"
+}
+{
+  "resource_id": "^U_BOLT1",
+  "base_id": "U_BOLT1",
+  "catalogue_id": "U_BOLT1",
+  "display_name": "Boltcaster",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_BOLT1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/72.png",
+  "appId": "tech72"
+}
+{
+  "resource_id": "^U_BOLT4",
+  "base_id": "U_BOLT4",
+  "catalogue_id": "U_BOLT4",
+  "display_name": "Boltcaster",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_BOLT4&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/72.png",
+  "appId": "tech72"
+}
+{
+  "resource_id": "^U_BOLTX",
+  "base_id": "U_BOLTX",
+  "catalogue_id": "U_BOLTX",
+  "display_name": "Barrel Ionizer",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_BOLTX&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/73.png",
+  "appId": "tech73"
+}
+{
+  "resource_id": "^U_COLDPROT2",
+  "base_id": "U_COLDPROT2",
+  "catalogue_id": "U_COLDPROT2",
+  "display_name": "Thermal Protection",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_COLDPROT2&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/9.png",
+  "appId": "tech9"
+}
+{
+  "resource_id": "^U_GRENADEX",
+  "base_id": "U_GRENADEX",
+  "catalogue_id": "U_GRENADEX",
+  "display_name": "Plasma Launcher",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_GRENADEX&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/76.png",
+  "appId": "tech76"
+}
+{
+  "resource_id": "^U_HYPERX",
+  "base_id": "U_HYPERX",
+  "catalogue_id": "U_HYPERX",
+  "display_name": "Hyperdrive",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_HYPERX&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/29.png",
+  "appId": "tech29"
+}
+{
+  "resource_id": "^U_PULSEX",
+  "base_id": "U_PULSEX",
+  "catalogue_id": "U_PULSEX",
+  "display_name": "Pulse Engine",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_PULSEX&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/23.png",
+  "appId": "tech23"
+}
+{
+  "resource_id": "^U_RAD3",
+  "base_id": "U_RAD3",
+  "catalogue_id": "U_RAD3",
+  "display_name": "Radiation Deflector",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_RAD3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/11.png",
+  "appId": "tech11"
+}
+{
+  "resource_id": "^U_RAIL4",
+  "base_id": "U_RAIL4",
+  "catalogue_id": "U_RAIL4",
+  "display_name": "Mass Accelerator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_RAIL4&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/79.png",
+  "appId": "tech79"
+}
+{
+  "resource_id": "^U_SHIPGUN1",
+  "base_id": "U_SHIPGUN1",
+  "catalogue_id": "U_SHIPGUN1",
+  "display_name": "Photon Cannon",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=U_SHIPGUN1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/37.png",
+  "appId": "tech37"
+}
+{
+  "resource_id": "^VENTGEM",
+  "base_id": "VENTGEM",
+  "catalogue_id": "VENTGEM",
+  "display_name": "Crystal Sulphide",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=VENTGEM&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/32.png",
+  "appId": "cur32"
+}
+{
+  "resource_id": "^WALKER_PROD",
+  "base_id": "WALKER_PROD",
+  "catalogue_id": "WALKER_PROD",
+  "display_name": "Walker Brain",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=WALKER_PROD&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/2.png",
+  "appId": "cur2"
+}
+{
+  "resource_id": "^WAR_CURIO1",
+  "base_id": "WAR_CURIO1",
+  "catalogue_id": "WAR_CURIO1",
+  "display_name": "Vy'keen Effigy",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=WAR_CURIO1&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/37.png",
+  "appId": "cur37"
+}
+{
+  "resource_id": "^WAR_CURIO2",
+  "base_id": "WAR_CURIO2",
+  "catalogue_id": "WAR_CURIO2",
+  "display_name": "Vy'keen Dagger",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=WAR_CURIO2&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/38.png",
+  "appId": "cur38"
+}
+{
+  "resource_id": "^WATER1",
+  "base_id": "WATER1",
+  "catalogue_id": "WATER1",
+  "display_name": "Salt",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=WATER1&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/16.png",
+  "appId": "raw16"
+}
+{
+  "resource_id": "^WATER2",
+  "base_id": "WATER2",
+  "catalogue_id": "WATER2",
+  "display_name": "Chlorine",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=WATER2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/17.png",
+  "appId": "raw17"
+}
+{
+  "resource_id": "^WATERPLANT",
+  "base_id": "WATERPLANT",
+  "catalogue_id": "WATERPLANT",
+  "display_name": "Cyto-Phosphate",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=WATERPLANT&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/18.png",
+  "appId": "raw18"
+}
+{
+  "resource_id": "^YELLOW2",
+  "base_id": "YELLOW2",
+  "catalogue_id": "YELLOW2",
+  "display_name": "Copper",
+  "kind": "Substance",
+  "icon_url": "/api/icon.php?id=YELLOW2&type=Substance",
+  "source_icon_url": "https://cdn.nmsassistant.com/rawMaterials/19.png",
+  "appId": "raw19"
+}
+{
+  "resource_id": "^ENERGY",
+  "base_id": "ENERGY",
+  "catalogue_id": "ENERGY",
+  "display_name": "Life Support",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=ENERGY&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/3.png",
+  "appId": "tech3"
+}
+{
+  "resource_id": "^FISHLASER",
+  "base_id": "FISHLASER",
+  "catalogue_id": "FISHLASER",
+  "display_name": "Fishing Rig",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=FISHLASER&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/278.png",
+  "appId": "tech278"
+}
+{
+  "resource_id": "^FOOD_UNIT",
+  "base_id": "FOOD_UNIT",
+  "catalogue_id": "FOOD_UNIT",
+  "display_name": "Nutrient Ingestor",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=FOOD_UNIT&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/285.png",
+  "appId": "tech285"
+}
+{
+  "resource_id": "^GRENADE",
+  "base_id": "GRENADE",
+  "catalogue_id": "GRENADE",
+  "display_name": "Plasma Launcher",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=GRENADE&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/76.png",
+  "appId": "tech76"
+}
+{
+  "resource_id": "^JET1",
+  "base_id": "JET1",
+  "catalogue_id": "JET1",
+  "display_name": "Jetpack",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=JET1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/5.png",
+  "appId": "tech5"
+}
+{
+  "resource_id": "^LASER",
+  "base_id": "LASER",
+  "catalogue_id": "LASER",
+  "display_name": "Mining Beam",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=LASER&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/69.png",
+  "appId": "tech69"
+}
+{
+  "resource_id": "^POWERGLOVE",
+  "base_id": "POWERGLOVE",
+  "catalogue_id": "POWERGLOVE",
+  "display_name": "Haz-Mat Gauntlet",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=POWERGLOVE&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/13.png",
+  "appId": "tech13"
+}
+{
+  "resource_id": "^PRESSURE_SUIT",
+  "base_id": "PRESSURE_SUIT",
+  "catalogue_id": "PRESSURE_SUIT",
+  "display_name": "Pressure Membrane",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=PRESSURE_SUIT&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/283.png",
+  "appId": "tech283"
+}
+{
+  "resource_id": "^PROTECT",
+  "base_id": "PROTECT",
+  "catalogue_id": "PROTECT",
+  "display_name": "Hazard Protection",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=PROTECT&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/1.png",
+  "appId": "tech1"
+}
+{
+  "resource_id": "^SHIELD_ALIEN",
+  "base_id": "SHIELD_ALIEN",
+  "catalogue_id": "SHIELD_ALIEN",
+  "display_name": "Scream Suppressor",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=SHIELD_ALIEN&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/163.png",
+  "appId": "tech163"
+}
+{
+  "resource_id": "^STORY_TRANSLATE",
+  "base_id": "STORY_TRANSLATE",
+  "catalogue_id": "STORY_TRANSLATE",
+  "display_name": "Artemis' Translator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=STORY_TRANSLATE&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/22.png",
+  "appId": "tech22"
+}
+{
+  "resource_id": "^STUN_GREN",
+  "base_id": "STUN_GREN",
+  "catalogue_id": "STUN_GREN",
+  "display_name": "Paralysis Mortar",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=STUN_GREN&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/205.png",
+  "appId": "tech205"
+}
+{
+  "resource_id": "^T_BOBBLE_ATLAS",
+  "base_id": "T_BOBBLE_ATLAS",
+  "catalogue_id": "T_BOBBLE_ATLAS",
+  "display_name": "Atlas Figurine",
+  "kind": "Product",
+  "icon_url": "/api/icon.php?id=T_BOBBLE_ATLAS&type=Product",
+  "source_icon_url": "https://cdn.nmsassistant.com/other/48.png",
+  "appId": "other48"
+}
+{
+  "resource_id": "^T_SHIP_GOLD",
+  "base_id": "T_SHIP_GOLD",
+  "catalogue_id": "T_SHIP_GOLD",
+  "display_name": "Golden Starship Trail",
+  "kind": null,
+  "icon_url": "/api/icon.php?id=T_SHIP_GOLD",
+  "source_icon_url": "https://cdn.nmsassistant.com/building/373.png",
+  "appId": "build373"
+}
+{
+  "resource_id": "^TERRAINEDITOR",
+  "base_id": "TERRAINEDITOR",
+  "catalogue_id": "TERRAINEDITOR",
+  "display_name": "Terrain Manipulator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=TERRAINEDITOR&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/66.png",
+  "appId": "tech66"
+}
+{
+  "resource_id": "^UP_COLD1#97024",
+  "base_id": "UP_COLD1",
+  "catalogue_id": "UP_COLD1",
+  "display_name": "Thermic Layer",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_COLD1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/9.png",
+  "appId": "tech9"
+}
+{
+  "resource_id": "^UP_HOT2#65082",
+  "base_id": "UP_HOT2",
+  "catalogue_id": "UP_HOT2",
+  "display_name": "Coolant Network",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_HOT2&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/8.png",
+  "appId": "tech8"
+}
+{
+  "resource_id": "^UP_RAD3#93010",
+  "base_id": "UP_RAD3",
+  "catalogue_id": "UP_RAD3",
+  "display_name": "Radiation Deflector",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_RAD3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/11.png",
+  "appId": "tech11"
+}
+{
+  "resource_id": "^UP_SHLD1#67777",
+  "base_id": "UP_SHLD1",
+  "catalogue_id": "UP_SHLD1",
+  "display_name": "Shield Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_SHLD1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/1.png",
+  "appId": "tech1"
+}
+{
+  "resource_id": "^UP_SHLD1#98824",
+  "base_id": "UP_SHLD1",
+  "catalogue_id": "UP_SHLD1",
+  "display_name": "Shield Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_SHLD1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/1.png",
+  "appId": "tech1"
+}
+{
+  "resource_id": "^UP_SHLD3#13619",
+  "base_id": "UP_SHLD3",
+  "catalogue_id": "UP_SHLD3",
+  "display_name": "Shield Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_SHLD3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/1.png",
+  "appId": "tech1"
+}
+{
+  "resource_id": "^UP_SHLD3#93685",
+  "base_id": "UP_SHLD3",
+  "catalogue_id": "UP_SHLD3",
+  "display_name": "Shield Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_SHLD3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/1.png",
+  "appId": "tech1"
+}
+{
+  "resource_id": "^UP_SLASRX#85992",
+  "base_id": "UP_SLASRX",
+  "catalogue_id": "UP_SLASRX",
+  "display_name": "Phase Beam Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_SLASRX&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/41.png",
+  "appId": "tech41"
+}
+{
+  "resource_id": "^UP_TOX2#21775",
+  "base_id": "UP_TOX2",
+  "catalogue_id": "UP_TOX2",
+  "display_name": "Toxic Suppressor",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_TOX2&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/10.png",
+  "appId": "tech10"
+}
+{
+  "resource_id": "^UP_TOX3#53903",
+  "base_id": "UP_TOX3",
+  "catalogue_id": "UP_TOX3",
+  "display_name": "Toxic Suppressor",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_TOX3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/10.png",
+  "appId": "tech10"
+}
+{
+  "resource_id": "^UP_UNW2#23281",
+  "base_id": "UP_UNW2",
+  "catalogue_id": "UP_UNW2",
+  "display_name": "Underwater Protection Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_UNW2&type=Technology",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^UP_UNW3#72944",
+  "base_id": "UP_UNW3",
+  "catalogue_id": "UP_UNW3",
+  "display_name": "Underwater Protection Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UP_UNW3&type=Technology",
+  "source_icon_url": null,
+  "appId": null
+}
+{
+  "resource_id": "^UT_COLD",
+  "base_id": "UT_COLD",
+  "catalogue_id": "UT_COLD",
+  "display_name": "Thermic Layer",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_COLD&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/9.png",
+  "appId": "tech9"
+}
+{
+  "resource_id": "^UT_ENERGY",
+  "base_id": "UT_ENERGY",
+  "catalogue_id": "UT_ENERGY",
+  "display_name": "Oxygen Recycler",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_ENERGY&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/4.png",
+  "appId": "tech4"
+}
+{
+  "resource_id": "^UT_HOT",
+  "base_id": "UT_HOT",
+  "catalogue_id": "UT_HOT",
+  "display_name": "Coolant Network",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_HOT&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/8.png",
+  "appId": "tech8"
+}
+{
+  "resource_id": "^UT_JET",
+  "base_id": "UT_JET",
+  "catalogue_id": "UT_JET",
+  "display_name": "Neural Stimulator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_JET&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/6.png",
+  "appId": "tech6"
+}
+{
+  "resource_id": "^UT_MIDAIR",
+  "base_id": "UT_MIDAIR",
+  "catalogue_id": "UT_MIDAIR",
+  "display_name": "Airburst Engine",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_MIDAIR&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/6.png",
+  "appId": "tech142"
+}
+{
+  "resource_id": "^UT_RAD",
+  "base_id": "UT_RAD",
+  "catalogue_id": "UT_RAD",
+  "display_name": "Radiation Deflector",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_RAD&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/11.png",
+  "appId": "tech11"
+}
+{
+  "resource_id": "^UT_TOX",
+  "base_id": "UT_TOX",
+  "catalogue_id": "UT_TOX",
+  "display_name": "Toxic Suppressor",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_TOX&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/10.png",
+  "appId": "tech10"
+}
+{
+  "resource_id": "^UT_TRANSLATE1",
+  "base_id": "UT_TRANSLATE1",
+  "catalogue_id": "UT_TRANSLATE1",
+  "display_name": "Simple Translator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_TRANSLATE1&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/65.png",
+  "appId": "tech19"
+}
+{
+  "resource_id": "^UT_TRANSLATE2",
+  "base_id": "UT_TRANSLATE2",
+  "catalogue_id": "UT_TRANSLATE2",
+  "display_name": "Superior Translator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_TRANSLATE2&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/65.png",
+  "appId": "tech20"
+}
+{
+  "resource_id": "^UT_TRANSLATE3",
+  "base_id": "UT_TRANSLATE3",
+  "catalogue_id": "UT_TRANSLATE3",
+  "display_name": "Advanced Translator",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_TRANSLATE3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/curiosities/65.png",
+  "appId": "tech21"
+}
+{
+  "resource_id": "^UT_WATER",
+  "base_id": "UT_WATER",
+  "catalogue_id": "UT_WATER",
+  "display_name": "Aeration Membrane",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_WATER&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/12.png",
+  "appId": "tech12"
+}
+{
+  "resource_id": "^UT_WATERENERGY",
+  "base_id": "UT_WATERENERGY",
+  "catalogue_id": "UT_WATERENERGY",
+  "display_name": "Oxygen Rerouter",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_WATERENERGY&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/4.png",
+  "appId": "tech18"
+}
+{
+  "resource_id": "^UT_WATERJET",
+  "base_id": "UT_WATERJET",
+  "catalogue_id": "UT_WATERJET",
+  "display_name": "Efficient Water Jets",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=UT_WATERJET&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/17.png",
+  "appId": "tech17"
+}
+{
+  "resource_id": "^WEAPSLOT_DMG2",
+  "base_id": "WEAPSLOT_DMG2",
+  "catalogue_id": "WEAPSLOT_DMG2",
+  "display_name": "Blown Transistor",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=WEAPSLOT_DMG2&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/products/51.png",
+  "appId": "tech85"
+}
+{
+  "resource_id": "^WEAPSLOT_DMG3",
+  "base_id": "WEAPSLOT_DMG3",
+  "catalogue_id": "WEAPSLOT_DMG3",
+  "display_name": "Damaged Wiring",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=WEAPSLOT_DMG3&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/tradeItems/21.png",
+  "appId": "tech86"
+}
+{
+  "resource_id": "^WEAPSLOT_DMG4",
+  "base_id": "WEAPSLOT_DMG4",
+  "catalogue_id": "WEAPSLOT_DMG4",
+  "display_name": "Rusted Power Core",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=WEAPSLOT_DMG4&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/87.png",
+  "appId": "tech87"
+}
+{
+  "resource_id": "^WEAPSLOT_DMG5",
+  "base_id": "WEAPSLOT_DMG5",
+  "catalogue_id": "WEAPSLOT_DMG5",
+  "display_name": "Corrupt Module",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=WEAPSLOT_DMG5&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/88.png",
+  "appId": "tech88"
+}
+{
+  "resource_id": "^WEAPSLOT_DMG6",
+  "base_id": "WEAPSLOT_DMG6",
+  "catalogue_id": "WEAPSLOT_DMG6",
+  "display_name": "Loom Damage",
+  "kind": "Technology",
+  "icon_url": "/api/icon.php?id=WEAPSLOT_DMG6&type=Technology",
+  "source_icon_url": "https://cdn.nmsassistant.com/technology/89.png",
+  "appId": "tech89"
+}

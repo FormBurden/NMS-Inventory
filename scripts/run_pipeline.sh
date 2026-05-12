@@ -46,6 +46,78 @@ maria() {
   fi
 }
 
+cleanup_database_retention() {
+  local retention
+  local ledger_table
+  local have_ledger
+
+  retention="$(strip_quotes "$(get_env NMS_SNAPSHOT_RETENTION "25")")"
+  ledger_table="$(strip_quotes "$(get_env NMS_DB_LEDGER_TABLE "nms_ledger_deltas")")"
+
+  if [[ ! "$retention" =~ ^[0-9]+$ || "$retention" -lt 2 ]]; then
+    retention=25
+  fi
+
+  if [[ ! "$ledger_table" =~ ^[A-Za-z0-9_]+$ ]]; then
+    echo "[cleanup][WARN] Unsafe ledger table name; skipping DB retention cleanup."
+    return 0
+  fi
+
+  have_ledger="$(maria -D "$DB_NAME" -N -e "SHOW TABLES LIKE '$ledger_table';" 2>/dev/null || true)"
+
+  if [[ -n "$have_ledger" ]]; then
+    if ! maria -D "$DB_NAME" -N -e "
+DELETE d
+  FROM \`$ledger_table\` d
+  LEFT JOIN (
+        SELECT snapshot_id
+          FROM (
+                SELECT snapshot_id
+                  FROM nms_snapshots
+              ORDER BY imported_at DESC, snapshot_id DESC
+                 LIMIT $retention
+               ) kept_from_inner
+       ) kept_from
+    ON kept_from.snapshot_id = d.from_snapshot_id
+  LEFT JOIN (
+        SELECT snapshot_id
+          FROM (
+                SELECT snapshot_id
+                  FROM nms_snapshots
+              ORDER BY imported_at DESC, snapshot_id DESC
+                 LIMIT $retention
+               ) kept_to_inner
+       ) kept_to
+    ON kept_to.snapshot_id = d.to_snapshot_id
+ WHERE kept_from.snapshot_id IS NULL
+    OR kept_to.snapshot_id IS NULL;
+" >"$LOGS/cleanup_ledger_retention.$stamp.log" 2>&1; then
+      echo "[cleanup][WARN] Ledger retention cleanup failed; see $LOGS/cleanup_ledger_retention.$stamp.log"
+    fi
+  fi
+
+  if ! maria -D "$DB_NAME" -N -e "
+DELETE s
+  FROM nms_snapshots s
+  LEFT JOIN (
+        SELECT snapshot_id
+          FROM (
+                SELECT snapshot_id
+                  FROM nms_snapshots
+              ORDER BY imported_at DESC, snapshot_id DESC
+                 LIMIT $retention
+               ) kept_inner
+       ) kept
+    ON kept.snapshot_id = s.snapshot_id
+ WHERE kept.snapshot_id IS NULL;
+" >"$LOGS/cleanup_snapshot_retention.$stamp.log" 2>&1; then
+    echo "[cleanup][WARN] Snapshot retention cleanup failed; see $LOGS/cleanup_snapshot_retention.$stamp.log"
+    return 0
+  fi
+
+  maria -D "$DB_NAME" -N -e "SELECT 'snapshots_retained' AS tag, COUNT(*) FROM nms_snapshots;" || true
+}
+
 # --- choose save*.hg file -----------------------------------------------------
 HG_FILE=""
 if [[ -n "$HG_HINT" && -f "$HG_HINT" ]]; then
@@ -110,6 +182,7 @@ run_initial_import() {
   if ! python3 -m scripts.python.pipeline.ledger.cli_main initial_import \
       --db-name "$DB_NAME" \
       --manifest "$ROOT/storage/decoded/_manifest_recent.json" \
+      --include-tech \
       >"$tmp_sql" 2>"$LOGS/initial_import.$stamp.log.py"; then
     echo "[PIPE][ERROR] db_import_initial.py failed; see $LOGS/initial_import.$stamp.log.py"
     return 1
@@ -178,15 +251,19 @@ else
     --saves "$clean_json" \
     --baseline-db-table "$INITIAL_TABLE" \
     --baseline-snapshot latest \
-    --db-write-ledger --db-env "$ROOT/.env.dbshim" --db-ledger-table "$LEDGER_TABLE" \
+    --db-write-ledger --db-env "$ENV_FILE" --db-ledger-table "$LEDGER_TABLE" \
     --session-minutes "$SESSION_MINUTES" \
     ${USE_MTIME:+--use-mtime} \
     >"$ledger_log" 2>&1; then
     echo "[PIPE][WARN] ledger compare failed; continuing after import."
     echo "[PIPE][WARN] ledger log: $ledger_log"
     tail -n 80 "$ledger_log" || true
+  else
+    tail -n 20 "$ledger_log" | sed 's/^/[PIPE] /'
   fi
 fi
+
+cleanup_database_retention
 
 echo "[PIPE] done."
 

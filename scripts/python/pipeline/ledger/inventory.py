@@ -2,7 +2,7 @@
 from typing import Any, Dict, Iterable, List, Tuple, Optional
 import re
 
-GOOD_TYPES = {"Substance", "Product"}
+GOOD_TYPES = {"Substance", "Product", "Technology"}
 SANE_CAPS = {50, 100, 101, 200, 250, 500, 801, 1000, 1001, 2000, 9999}
 
 
@@ -11,7 +11,7 @@ def _norm_key(s: str) -> str:
 
 
 def _inventory_type(owner_js: Dict[str, Any]) -> str:
-    for k in ("Character", "Ship", "Freighter", "Vehicle", "Storage"):
+    for k in ("Character", "Ship", "Freighter", "Vehicle", "Storage", "Base"):
         if k in owner_js:
             return _norm_key(k)
     return "unknown"
@@ -71,6 +71,22 @@ def _slot_id(slot: Dict[str, Any]) -> Optional[str]:
     if _is_progress_token(rid_s):
         return None
     return rid_s
+
+
+def _slot_item_type(slot: Dict[str, Any]) -> str:
+    item_type = _dict_get(slot.get("Vn8"), "elv")
+    if isinstance(item_type, str):
+        return item_type.strip()
+
+    item_type = slot.get("Type")
+    if isinstance(item_type, str):
+        return item_type.strip()
+
+    item_type = slot.get("ItemType")
+    if isinstance(item_type, str):
+        return item_type.strip()
+
+    return ""
 
 
 def _slot_amount(slot: Dict[str, Any]) -> int:
@@ -136,8 +152,13 @@ def _infer_section_from_selector(sel: str) -> str:
 
 
 def _infer_section_from_slot(slot: Dict[str, Any], fallback: str) -> str:
+    item_type = _slot_item_type(slot).lower()
+    if item_type == "technology":
+        return "tech"
+
     if _is_readable_item_slot(slot):
         return fallback
+
     grid = _dict_get(slot, "3ZH", {})
     qh = _dict_get(grid, ">Qh")
     xj = _dict_get(grid, "XJ>")
@@ -152,19 +173,25 @@ def _infer_section_from_slot(slot: Dict[str, Any], fallback: str) -> str:
 
 def _infer_owner_from_selector(sel: str) -> str:
     parts = set(seg for seg in re.split(r"\.|\[\d+\]", sel) if seg)
-    if "<IP" in parts:
+    if "<IP" in parts or "0wS" in parts or "FdP" in parts:
         return "freighter"
     if "8ZP" in parts:
         return "vehicle"
+    if "3Nc" in parts:
+        return "storage"
     if "P;m" in parts:
         return "ship"
     if ";l5" in parts:
         return "character"
+
     root = sel.split(".", 1)[0]
     if root == "2YS":
         return "ship"
     if root == "vLc":
         return "character"
+    if root == "3Nc":
+        return "storage"
+
     return "unknown"
 
 
@@ -181,20 +208,25 @@ def _infer_owner_from_path(path: List[Any]) -> str:
         return "character"
     if "P;m" in segs:
         return "ship"
-    if "<IP" in segs:
+    if "<IP" in segs or "0wS" in segs or "FdP" in segs:
         return "freighter"
     if "8ZP" in segs:
         return "vehicle"
+    if "3Nc" in segs:
+        return "storage"
 
     pstr = ".".join(str(p) for p in path[-256:])
     if ".;l5." in pstr:
         return "character"
     if ".P;m." in pstr:
         return "ship"
-    if ".<IP." in pstr:
+    if ".<IP." in pstr or ".0wS." in pstr or ".FdP." in pstr:
         return "freighter"
     if ".8ZP." in pstr:
         return "vehicle"
+    if ".3Nc." in pstr:
+        return "storage"
+
     return "unknown"
 
 
@@ -211,6 +243,49 @@ def _walk_dicts(obj: Any) -> Iterable[Tuple[List[Any], Dict[str, Any]]]:
                 stack.append((path + [i], v))
 
 
+def _base_resource_id(rid: str) -> str:
+    base = str(rid or "").strip().upper().lstrip("^")
+    hash_pos = base.find("#")
+    if hash_pos >= 0:
+        base = base[:hash_pos]
+    return base
+
+
+def _owner_from_resource_id(rid: str) -> str:
+    base = _base_resource_id(rid)
+
+    if (
+        base.startswith("F_")
+        or base.startswith("FREI_")
+        or base.startswith("FRIG_")
+        or base.startswith("MAINT_FRIG")
+    ):
+        return "freighter"
+
+    if (
+        base.startswith("VEHICLE_")
+        or base.startswith("MECH_")
+        or base.startswith("SUB_")
+        or base.startswith("NAUT_")
+        or base == "FISH_SKIFF"
+    ):
+        return "vehicle"
+
+    if (
+        base.startswith("CV_")
+        or base.startswith("SHIP")
+        or base.startswith("HDRIVE")
+        or base.startswith("LAUNCHER")
+        or base.startswith("HYPERDRIVE")
+        or base.startswith("WARP")
+        or base.startswith("UT_SHIP")
+        or base in {"UT_ROCKETS", "UT_LAUNCHCHARGE", "UT_QUICKWARP", "WATER_LANDER"}
+    ):
+        return "ship"
+
+    return ""
+
+
 def _add_slot(
     totals: Dict[Tuple[str, str, str], int],
     owner_type: str,
@@ -220,10 +295,16 @@ def _add_slot(
 ) -> None:
     if not include_tech and inventory == "tech":
         return
+
     rid = _slot_id(slot)
     amt = _slot_amount(slot)
     if rid is None or amt <= 0:
         return
+
+    resource_owner = _owner_from_resource_id(rid)
+    if resource_owner:
+        owner_type = resource_owner
+
     key = (owner_type, inventory, rid)
     totals[key] = totals.get(key, 0) + amt
 
@@ -234,16 +315,14 @@ def aggregate_inventory(js: Dict[str, Any], include_tech: bool = False) -> Dict[
     for path, slot in _walk_dicts(js):
         if _path_has_bad_context(path):
             continue
-        if not _is_obfuscated_item_slot(slot):
+        if not _is_item_slot(slot):
             continue
         owner_type = _infer_owner_from_path(path)
         inventory = _infer_section_from_slot(slot, "general")
         _add_slot(scanned_totals, owner_type, inventory, slot, include_tech)
 
-    if scanned_totals:
-        return scanned_totals
-
-    totals: Dict[Tuple[str, str, str], int] = {}
+    totals: Dict[Tuple[str, str, str], int] = dict(scanned_totals)
+    indexed_totals: Dict[Tuple[str, str, str], int] = {}
     idx = js.get("_index", {}).get("inventories", [])
     if not isinstance(idx, list):
         return totals
@@ -264,6 +343,10 @@ def aggregate_inventory(js: Dict[str, Any], include_tech: bool = False) -> Dict[
             if not _is_item_slot(slot):
                 continue
             inventory = _infer_section_from_slot(slot, selector_section)
-            _add_slot(totals, owner_type, inventory, slot, include_tech)
+            _add_slot(indexed_totals, owner_type, inventory, slot, include_tech)
+
+    for key, amount in indexed_totals.items():
+        if key not in totals:
+            totals[key] = amount
 
     return totals

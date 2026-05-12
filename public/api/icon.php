@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Icon resolver.
- * Priority: direct URL → icon_map candidates → items_local.json → local file → placeholder.
+ * Priority: direct URL → items_local.json → icon_map candidates → local file → placeholder.
  * Remote icons are proxied and cached so the browser stays on localhost.
  */
 header('Cache-Control: public, max-age=86400');
@@ -184,6 +184,73 @@ function icon_map_candidates(string $rid, string $type): array {
     return [];
 }
 
+function manual_icon_candidates(string $rid): array {
+    $overrides = [
+        'CHART_HIVE' => [
+            'https://nomanssky.fandom.com/wiki/Special:FilePath/PRODUCT.STARCHART.HIVE.png',
+        ],
+        'SENTINEL_LOOT' => [
+            'https://nomanssky.fandom.com/wiki/Special:FilePath/PRODUCT.SENTINELLOOT.png',
+        ],
+        'COMPOUND2' => [
+            'https://nomanssky.fandom.com/wiki/Special:FilePath/COMPOUND.2.png',
+        ],
+    ];
+
+    return $overrides[$rid] ?? [];
+}
+
+function item_json_icon_candidates(string $rid): array {
+    $candidates = [
+        __DIR__ . '/../data/items_local.json',
+        __DIR__ . '/../assets/items_local.json',
+        __DIR__ . '/../icons/items_local.json',
+        __DIR__ . '/../Inventory/assets/items_local.json',
+        __DIR__ . '/../Inventory/data/items_local.json',
+        __DIR__ . '/../Inventory/items_local.json',
+    ];
+
+    foreach ($candidates as $p) {
+        if (!is_file($p)) continue;
+
+        $raw = @file_get_contents($p);
+        $arr = $raw !== false ? json_decode($raw, true) : null;
+        if (!is_array($arr)) continue;
+
+        foreach ($arr as $key => $row) {
+            if (!is_array($row)) continue;
+
+            $keyId = normalize_resource_id((string)$key);
+            $rowId = normalize_resource_id((string)($row['resource_id'] ?? $row['id'] ?? ''));
+
+            if ($keyId !== $rid && $rowId !== $rid) {
+                continue;
+            }
+
+            $urls = [];
+            foreach (['source_icon_url', 'icon_url', 'icon'] as $field) {
+                $u = trim((string)($row[$field] ?? ''));
+                if ($u !== '') {
+                    $urls[] = $u;
+                }
+            }
+
+            $out = [];
+            $seen = [];
+            foreach ($urls as $u) {
+                if (isset($seen[$u])) continue;
+
+                $seen[$u] = true;
+                $out[] = $u;
+            }
+
+            return $out;
+        }
+    }
+
+    return [];
+}
+
 $inUrl = trim((string)($_GET['url'] ?? ''));
 if ($inUrl !== '' && emit_remote_icon($inUrl, 'direct-url', $cacheDir)) {
     exit;
@@ -192,6 +259,46 @@ if ($inUrl !== '' && emit_remote_icon($inUrl, 'direct-url', $cacheDir)) {
 $rawRid = (string)($_GET['id'] ?? $_GET['rid'] ?? $_GET['resource_id'] ?? '');
 $rid = normalize_resource_id($rawRid);
 $type = trim((string)($_GET['type'] ?? ''));
+
+if ($rid !== '') {
+    $urls = manual_icon_candidates($rid);
+    if (emit_first_remote_icon($urls, 'manual:url', $cacheDir)) {
+        exit;
+    }
+
+    foreach ($urls as $u) {
+        $u = (string)$u;
+        if ($u === '' || preg_match('~^https?://~i', $u)) {
+            continue;
+        }
+
+        $local = realpath(__DIR__ . '/../' . ltrim($u, '/'));
+        if ($local && is_file($local)) {
+            set_diag('manual:local');
+            emit_file($local);
+        }
+    }
+}
+
+if ($rid !== '') {
+    $urls = item_json_icon_candidates($rid);
+    if (emit_first_remote_icon($urls, 'items_json:url', $cacheDir)) {
+        exit;
+    }
+
+    foreach ($urls as $u) {
+        $u = (string)$u;
+        if ($u === '' || preg_match('~^https?://~i', $u)) {
+            continue;
+        }
+
+        $local = realpath(__DIR__ . '/../' . ltrim($u, '/'));
+        if ($local && is_file($local)) {
+            set_diag('items_json:local');
+            emit_file($local);
+        }
+    }
+}
 
 if ($rid !== '') {
     $urls = icon_map_candidates($rid, $type);
@@ -209,47 +316,6 @@ if ($rid !== '') {
         if ($local && is_file($local)) {
             set_diag('icon_map:local');
             emit_file($local);
-        }
-    }
-}
-
-if ($rid !== '') {
-    $candidates = [
-        __DIR__ . '/../data/items_local.json',
-        __DIR__ . '/../assets/items_local.json',
-        __DIR__ . '/../icons/items_local.json',
-        __DIR__ . '/../Inventory/assets/items_local.json',
-        __DIR__ . '/../Inventory/data/items_local.json',
-        __DIR__ . '/../Inventory/items_local.json',
-    ];
-
-    foreach ($candidates as $p) {
-        if (!is_file($p)) continue;
-
-        $raw = @file_get_contents($p);
-        $arr = $raw !== false ? json_decode($raw, true) : null;
-        if (!is_array($arr)) continue;
-
-        foreach ($arr as $row) {
-            if (!is_array($row)) continue;
-
-            $id = normalize_resource_id((string)($row['resource_id'] ?? $row['id'] ?? ''));
-            if ($id !== $rid) continue;
-
-            $u = (string)($row['icon_url'] ?? $row['icon'] ?? '');
-            if ($u !== '') {
-                if (preg_match('~^https?://~i', $u) && emit_remote_icon($u, 'items_json:url', $cacheDir)) {
-                    exit;
-                }
-
-                $local = realpath(__DIR__ . '/../' . ltrim($u, '/'));
-                if ($local && is_file($local)) {
-                    set_diag('items_json:local');
-                    emit_file($local);
-                }
-            }
-
-            break 2;
         }
     }
 }

@@ -269,6 +269,8 @@ function applyCatalogueAliases(array &$items): int {
         'U_PULSEX' => [['SHIPJUMP1', 'UT_PULSE'], 'Pulse Engine'],
         'U_GRENADEX' => [['GRENADE', 'UT_GREN'], 'Plasma Launcher'],
         'U_COLDPROT2' => [['UT_COLD', 'COLDPROT'], 'Thermal Protection'],
+        'U_HOTPROT2' => [['UT_HOT', 'HOTPROT'], 'Thermal Protection'],
+        'U_UNW2' => [['WATERPROT', 'UT_UNW'], 'Underwater Protection'],
     ];
 
     foreach ($proceduralExactAliases as $alias => $targetAndName) {
@@ -295,6 +297,12 @@ function applyCatalogueAliases(array &$items): int {
     $added += addSyntheticItem($items, 'CV_FIT1', 'Corvette Fitting Module', 'Technology');
     $added += addSyntheticItem($items, 'CV_FIT3', 'Corvette Fitting Module', 'Technology');
     $added += addSyntheticItem($items, 'CV_SCI3', 'Corvette Scanner Module', 'Technology');
+
+    $added += addSyntheticItem($items, 'PROC_HIST', 'Procedural History Item', 'Product');
+    $added += addSyntheticItem($items, 'PROC_TOOL', 'Procedural Multi-Tool Item', 'Product');
+    $added += addSyntheticItem($items, 'SHIP_CORE_C', 'Starship Core Component', 'Product');
+
+    $added += applyBuildingCatalogueSeeds($items);
 
     return $added;
 }
@@ -363,6 +371,76 @@ function addSyntheticItem(array &$items, string $id, string $name, string $kind)
     ];
 
     return 1;
+}
+
+function applyBuildingCatalogueSeeds(array &$items): int {
+    $path = __DIR__ . '/../data/mappings/building_catalogue_seeds.json';
+
+    if (!is_file($path)) {
+        return 0;
+    }
+
+    $rows = json_decode(file_get_contents($path), true);
+    if (!is_array($rows)) {
+        fwrite(STDERR, "WARNING: Invalid JSON: $path\n");
+        return 0;
+    }
+
+    $added = 0;
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $id = strtoupper(trim((string)($row['id'] ?? '')));
+        $name = trim((string)($row['name'] ?? ''));
+        $kind = trim((string)($row['kind'] ?? 'Building'));
+        $appIds = $row['appIds'] ?? [];
+
+        if ($id === '' || $name === '') {
+            continue;
+        }
+
+        if (!is_array($appIds)) {
+            $appIds = [];
+        }
+
+        $added += addCatalogueSeedFromCandidates($items, $id, $appIds, $name, $kind ?: 'Building');
+    }
+
+    return $added;
+}
+
+function addCatalogueSeedFromCandidates(array &$items, string $alias, array $appIds, string $name, string $kind): int {
+    $alias = strtoupper(trim($alias));
+
+    if ($alias === '' || isset($items[$alias])) {
+        return 0;
+    }
+
+    foreach ($items as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $appId = $row['appId'] ?? null;
+        if (!is_string($appId) || !in_array($appId, $appIds, true)) {
+            continue;
+        }
+
+        $items[$alias] = [
+            'id' => $alias,
+            'name' => $name,
+            'kind' => $kind,
+            'icon' => $row['icon'] ?? null,
+            'appId' => $appId,
+            'aliasOf' => $row['id'] ?? null,
+        ];
+
+        return 1;
+    }
+
+    return addSyntheticItem($items, $alias, $name, $kind);
 }
 
 /* case-insensitive helpers */
