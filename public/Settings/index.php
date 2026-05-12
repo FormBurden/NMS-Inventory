@@ -30,13 +30,13 @@ declare(strict_types=1);
       <div class="settings-grid">
         <label for="defaultWindow">Default Inventory Window</label>
         <select id="defaultWindow">
-          <option>Character</option>
-          <option>Base</option>
-          <option>Storage</option>
-          <option>Frigate</option>
-          <option>Corvette</option>
-          <option>Ship</option>
-          <option>Vehicles</option>
+          <option value="character">Character</option>
+          <option value="base">Base</option>
+          <option value="storage">Storage</option>
+          <option value="frigate">Frigate</option>
+          <option value="corvette">Corvette</option>
+          <option value="ship">Ship</option>
+          <option value="vehicle">Vehicles</option>
         </select>
 
         <label for="language">Language</label>

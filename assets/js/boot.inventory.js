@@ -2,8 +2,23 @@
 (() => {
 	const NS = (window.NMSI = window.NMSI || {});
 	const { assert, on, API, State, UI, baseIdFromRid } = NS;
+	const VIEW_PREFS_STORAGE_KEY = "nms_inventory_view_options";
+	const VIEW_PREF_DEFAULTS = {
+		sort: "alpha",
+		showResources: true,
+		showTechnology: true,
+		showUpgrades: true,
+		showBuilding: true,
+		showUnknown: true,
+		hiddenCategories: [],
+		hiddenGroups: [],
+		hiddenTags: [],
+		hiddenKinds: [],
+	};
+
 	let lastObservedActiveSessionId = "";
 	let recentSessionUserSelected = false;
+	let viewPrefs = loadViewPrefs();
 
 	async function loadCatalogue(includeTech) {
 		try {
@@ -735,6 +750,456 @@
 		);
 	}
 
+	function loadViewPrefs() {
+		try {
+			const raw = localStorage.getItem(VIEW_PREFS_STORAGE_KEY);
+			const parsed = raw ? JSON.parse(raw) : {};
+			return {
+				...VIEW_PREF_DEFAULTS,
+				...(parsed && typeof parsed === "object" ? parsed : {}),
+				hiddenCategories: Array.isArray(parsed?.hiddenCategories) ? parsed.hiddenCategories : [],
+				hiddenGroups: Array.isArray(parsed?.hiddenGroups) ? parsed.hiddenGroups : [],
+				hiddenTags: Array.isArray(parsed?.hiddenTags) ? parsed.hiddenTags : [],
+				hiddenKinds: Array.isArray(parsed?.hiddenKinds) ? parsed.hiddenKinds : [],
+			};
+		} catch {
+			return { ...VIEW_PREF_DEFAULTS };
+		}
+	}
+
+	function saveViewPrefs() {
+		try {
+			localStorage.setItem(VIEW_PREFS_STORAGE_KEY, JSON.stringify(viewPrefs));
+		} catch { }
+	}
+
+	function viewKindKey(row) {
+		const kind = String(row.kind || row.inventory || row.owner_type || "").trim();
+		return kind || "Unknown";
+	}
+
+	function viewCategoryKey(row) {
+		const category = String(row.category || "").trim();
+		return category || "Unknown";
+	}
+
+	function viewGroupKey(row) {
+		const group = String(row.group || "").trim();
+		return group || "Unknown";
+	}
+
+	function viewTagKeys(row) {
+		const tags = Array.isArray(row.tags) ? row.tags : [];
+		const out = [];
+
+		for (const tag of tags) {
+			const normalized = String(tag || "").trim();
+			if (normalized !== "") {
+				out.push(normalized);
+			}
+		}
+
+		return out.length ? out : ["unknown"];
+	}
+
+	function viewLabel(value) {
+		const smallWords = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "per", "the", "to", "vs", "via"]);
+		const words = String(value || "Unknown")
+			.replace(/[_-]+/g, " ")
+			.replace(/\s+/g, " ")
+			.trim()
+			.split(" ")
+			.filter(Boolean);
+
+		if (words.length === 0) {
+			return "Unknown";
+		}
+
+		return words.map((word, index) => {
+			const lower = word.toLowerCase();
+
+			if (index > 0 && smallWords.has(lower)) {
+				return lower;
+			}
+
+			return lower.charAt(0).toUpperCase() + lower.slice(1);
+		}).join(" ");
+	}
+
+	function viewKindLabel(kind) {
+		return viewLabel(kind);
+	}
+
+	function broadViewType(row) {
+		const category = String(row.category || "").trim().toLowerCase();
+		const kind = String(row.kind || "").trim().toLowerCase();
+		const inventory = String(row.inventory || "").trim().toLowerCase();
+		const tags = new Set(viewTagKeys(row).map(tag => String(tag).toLowerCase()));
+		const base = baseIdFromRid(row.resource_id || row.base_id || row.catalogue_id).toUpperCase();
+
+		if (
+			tags.has("upgrade") ||
+			tags.has("module") ||
+			kind.includes("upgrade") ||
+			kind.includes("module") ||
+			base.startsWith("U_") ||
+			base.startsWith("UP_")
+		) {
+			return "upgrade";
+		}
+
+		if (
+			category === "technology" ||
+			kind.includes("technology") ||
+			inventory === "tech" ||
+			inventory === "technology"
+		) {
+			return "technology";
+		}
+
+		if (
+			category === "building" ||
+			category === "cosmetic" ||
+			tags.has("base_part") ||
+			kind === "building" ||
+			base.startsWith("B_") ||
+			base.startsWith("BASE_") ||
+			base.startsWith("BUILD") ||
+			base.startsWith("CONTAINER") ||
+			base.startsWith("FRE_ROOM_") ||
+			base.startsWith("GARAGE_")
+		) {
+			return "building";
+		}
+
+		if (
+			category === "resource" ||
+			tags.has("resource") ||
+			tags.has("substance")
+		) {
+			return "resource";
+		}
+
+		if (!category && !kind && !inventory) {
+			return "unknown";
+		}
+
+		return "resource";
+	}
+
+	function rowPassesBroadPrefs(row) {
+		const broad = broadViewType(row);
+		if (broad === "resource" && !viewPrefs.showResources) return false;
+		if (broad === "technology" && !viewPrefs.showTechnology) return false;
+		if (broad === "upgrade" && !viewPrefs.showUpgrades) return false;
+		if (broad === "building" && !viewPrefs.showBuilding) return false;
+		if (broad === "unknown" && !viewPrefs.showUnknown) return false;
+
+		return true;
+	}
+
+	function rowPassesCategoryPrefs(row) {
+		const hiddenCategories = new Set(viewPrefs.hiddenCategories || []);
+		return !hiddenCategories.has(viewCategoryKey(row));
+	}
+
+	function rowPassesGroupPrefs(row) {
+		const hiddenGroups = new Set(viewPrefs.hiddenGroups || []);
+		return !hiddenGroups.has(viewGroupKey(row));
+	}
+
+	function rowPassesTagPrefs(row) {
+		const hiddenTags = new Set(viewPrefs.hiddenTags || []);
+		for (const tag of viewTagKeys(row)) {
+			if (hiddenTags.has(tag)) return false;
+		}
+
+		return true;
+	}
+
+	function rowPassesKindPrefs(row) {
+		const hiddenKinds = new Set(viewPrefs.hiddenKinds || []);
+		return !hiddenKinds.has(viewKindKey(row));
+	}
+
+	function rowPassesViewPrefsExcept(row, except = "") {
+		if (except !== "broad" && !rowPassesBroadPrefs(row)) return false;
+		if (except !== "category" && !rowPassesCategoryPrefs(row)) return false;
+		if (except !== "group" && !rowPassesGroupPrefs(row)) return false;
+		if (except !== "tag" && !rowPassesTagPrefs(row)) return false;
+		if (except !== "kind" && !rowPassesKindPrefs(row)) return false;
+
+		return true;
+	}
+
+	function rowPassesViewPrefs(row) {
+		return rowPassesViewPrefsExcept(row);
+	}
+
+	function rowSearchText(row) {
+		return [
+			row.display_name,
+			row.resource_id,
+			row.base_id,
+			row.catalogue_id,
+			row.kind,
+			row.category,
+			row.group,
+			Array.isArray(row.tags) ? row.tags.join(" ") : "",
+			row.inventory,
+			row.owner_type,
+		].map(v => String(v || "").toLowerCase()).join(" ");
+	}
+
+	function sortedViewRows(rows) {
+		const sorted = [...rows];
+		const sort = String(viewPrefs.sort || "alpha");
+
+		if (sort === "type") {
+			sorted.sort((a, b) => {
+				const typeCmp = viewKindLabel(viewKindKey(a)).localeCompare(viewKindLabel(viewKindKey(b)));
+				if (typeCmp !== 0) return typeCmp;
+				return String(a.display_name || a.resource_id || "").localeCompare(String(b.display_name || b.resource_id || ""));
+			});
+			return sorted;
+		}
+
+		if (sort === "category") {
+			sorted.sort((a, b) => {
+				const categoryCmp = viewLabel(viewCategoryKey(a)).localeCompare(viewLabel(viewCategoryKey(b)));
+				if (categoryCmp !== 0) return categoryCmp;
+				return String(a.display_name || a.resource_id || "").localeCompare(String(b.display_name || b.resource_id || ""));
+			});
+			return sorted;
+		}
+
+		if (sort === "group") {
+			sorted.sort((a, b) => {
+				const groupCmp = viewLabel(viewGroupKey(a)).localeCompare(viewLabel(viewGroupKey(b)));
+				if (groupCmp !== 0) return groupCmp;
+				return String(a.display_name || a.resource_id || "").localeCompare(String(b.display_name || b.resource_id || ""));
+			});
+			return sorted;
+		}
+
+		if (sort === "amount_desc") {
+			sorted.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+			return sorted;
+		}
+
+		if (sort === "amount_asc") {
+			sorted.sort((a, b) => Number(a.amount || 0) - Number(b.amount || 0));
+			return sorted;
+		}
+
+		if (sort === "id") {
+			sorted.sort((a, b) => String(a.resource_id || "").localeCompare(String(b.resource_id || "")));
+			return sorted;
+		}
+
+		sorted.sort((a, b) =>
+			String(a.display_name || a.resource_id || "").localeCompare(String(b.display_name || b.resource_id || ""))
+		);
+		return sorted;
+	}
+
+	function visibleRows() {
+		const search = document.getElementById("search");
+		const q = String(search?.value || "").trim().toLowerCase();
+		const filtersEnabled = selectedView() !== "stats";
+
+		return sortedViewRows(State.state.rows.filter(row => {
+			if (filtersEnabled && !rowPassesViewPrefs(row)) return false;
+			return !q || rowSearchText(row).includes(q);
+		}));
+	}
+
+	function renderVisibleRows() {
+		const grid = document.getElementById("grid");
+		const rows = visibleRows();
+
+		if (selectedView() === "recent") {
+			UI.renderRecentGrid(grid, rows);
+		} else if (selectedView() === "stats") {
+			UI.renderStatGrid(grid, rows);
+		} else {
+			UI.renderGrid(grid, rows);
+		}
+	}
+
+	function countRowValues(rows, valueFn) {
+		const counts = new Map();
+
+		for (const row of rows) {
+			const values = valueFn(row);
+			for (const value of values) {
+				counts.set(value, (counts.get(value) || 0) + 1);
+			}
+		}
+
+		return counts;
+	}
+
+	function populateCheckboxList(list, counts, hiddenValues, dataName, idPrefix, filterText = "") {
+		if (!list) return;
+
+		const normalizedFilter = String(filterText || "").trim().toLowerCase();
+
+		list.textContent = "";
+		const sortedValues = Array.from(counts.keys()).sort((a, b) => viewLabel(a).localeCompare(viewLabel(b)));
+
+		for (const value of sortedValues) {
+			if (normalizedFilter !== "" && !viewLabel(value).toLowerCase().includes(normalizedFilter)) {
+				continue;
+			}
+			const id = `${idPrefix}_${value.replace(/[^a-z0-9]+/gi, "_")}`;
+			const checkbox = document.createElement("input");
+			checkbox.type = "checkbox";
+			checkbox.id = id;
+			checkbox.checked = !hiddenValues.has(value);
+			checkbox.dataset[dataName] = value;
+
+			const name = document.createElement("span");
+			name.textContent = viewLabel(value);
+
+			const count = document.createElement("span");
+			count.className = "view-type-count";
+			count.textContent = Number(counts.get(value) || 0).toLocaleString();
+
+			const label = document.createElement("label");
+			label.htmlFor = id;
+			label.appendChild(checkbox);
+			label.appendChild(name);
+			label.appendChild(count);
+			list.appendChild(label);
+		}
+	}
+
+	function pruneHiddenValues(hiddenValues, counts) {
+		const current = new Set(counts.keys());
+		return (hiddenValues || []).filter(value => current.has(value));
+	}
+
+	function checkboxValuesInList(list, dataKey) {
+		if (!list) return [];
+
+		const selector = `input[data-${dataKey}]`;
+		const datasetKey = dataKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+		const values = [];
+
+		for (const input of list.querySelectorAll(selector)) {
+			const value = input.dataset[datasetKey];
+			if (typeof value === "string" && value.trim() !== "") {
+				values.push(value);
+			}
+		}
+
+		return values;
+	}
+
+	function setHiddenValuesForVisibleList(list, dataKey, prefKey, checked) {
+		const values = checkboxValuesInList(list, dataKey);
+		const hiddenValues = new Set(viewPrefs[prefKey] || []);
+
+		for (const value of values) {
+			if (checked) {
+				hiddenValues.delete(value);
+			} else {
+				hiddenValues.add(value);
+			}
+		}
+
+		viewPrefs[prefKey] = Array.from(hiddenValues).sort((a, b) => viewLabel(a).localeCompare(viewLabel(b)));
+		saveViewPrefs();
+		populateViewOptions(State.state.rows);
+		renderVisibleRows();
+	}
+
+	function setBroadTypeBulk(checked) {
+		for (const input of document.querySelectorAll("[data-view-setting]")) {
+			const key = input.dataset.viewSetting;
+			viewPrefs[key] = checked;
+			input.checked = checked;
+		}
+
+		saveViewPrefs();
+		populateViewOptions(State.state.rows);
+		renderVisibleRows();
+	}
+
+	function populateViewOptions(rows) {
+		const sort = document.getElementById("inventoryViewSort");
+		const categoryList = document.getElementById("viewCategoryList");
+		const groupList = document.getElementById("viewGroupList");
+		const groupSearch = document.getElementById("viewGroupSearch");
+		const tagList = document.getElementById("viewTagList");
+		const tagSearch = document.getElementById("viewTagSearch");
+		const typeList = document.getElementById("viewTypeList");
+		const filtersHidden = selectedView() === "stats";
+
+		for (const el of [
+			categoryList,
+			groupList,
+			tagList,
+			typeList,
+			document.querySelector("[data-view-setting]")?.closest(".view-panel-section"),
+		]) {
+			const section = el?.closest(".view-panel-disclosure") || el;
+			if (section) section.hidden = filtersHidden;
+		}
+
+		if (sort) sort.value = viewPrefs.sort || VIEW_PREF_DEFAULTS.sort;
+
+		for (const input of document.querySelectorAll("[data-view-setting]")) {
+			const key = input.dataset.viewSetting;
+			input.checked = viewPrefs[key] !== false;
+		}
+
+		const allCategoryCounts = countRowValues(rows, row => [viewCategoryKey(row)]);
+		const allGroupCounts = countRowValues(rows, row => [viewGroupKey(row)]);
+		const allTagCounts = countRowValues(rows, row => viewTagKeys(row));
+		const allKindCounts = countRowValues(rows, row => [viewKindKey(row)]);
+
+		viewPrefs.hiddenCategories = pruneHiddenValues(viewPrefs.hiddenCategories, allCategoryCounts);
+		viewPrefs.hiddenGroups = pruneHiddenValues(viewPrefs.hiddenGroups, allGroupCounts);
+		viewPrefs.hiddenTags = pruneHiddenValues(viewPrefs.hiddenTags, allTagCounts);
+		viewPrefs.hiddenKinds = pruneHiddenValues(viewPrefs.hiddenKinds, allKindCounts);
+
+		const categoryRows = rows.filter(row =>
+			rowPassesBroadPrefs(row)
+		);
+
+		const groupRows = rows.filter(row =>
+			rowPassesBroadPrefs(row) &&
+			rowPassesCategoryPrefs(row)
+		);
+
+		const tagRows = rows.filter(row =>
+			rowPassesBroadPrefs(row) &&
+			rowPassesCategoryPrefs(row) &&
+			rowPassesGroupPrefs(row)
+		);
+
+		const kindRows = rows.filter(row =>
+			rowPassesBroadPrefs(row) &&
+			rowPassesCategoryPrefs(row) &&
+			rowPassesGroupPrefs(row) &&
+			rowPassesTagPrefs(row)
+		);
+
+		const categoryCounts = countRowValues(categoryRows, row => [viewCategoryKey(row)]);
+		const groupCounts = countRowValues(groupRows, row => [viewGroupKey(row)]);
+		const tagCounts = countRowValues(tagRows, row => viewTagKeys(row));
+		const kindCounts = countRowValues(kindRows, row => [viewKindKey(row)]);
+
+		populateCheckboxList(categoryList, categoryCounts, new Set(viewPrefs.hiddenCategories || []), "viewCategory", "viewCategory");
+		populateCheckboxList(groupList, groupCounts, new Set(viewPrefs.hiddenGroups || []), "viewGroup", "viewGroup", groupSearch?.value || "");
+		populateCheckboxList(tagList, tagCounts, new Set(viewPrefs.hiddenTags || []), "viewTag", "viewTag", tagSearch?.value || "");
+		populateCheckboxList(typeList, kindCounts, new Set(viewPrefs.hiddenKinds || []), "viewKind", "viewKind");
+
+		saveViewPrefs();
+	}
+
 	async function loadInventory(options = {}) {
 		const allowAutoSessionAttach = options.allowAutoSessionAttach !== false;
 		const p = new URLSearchParams();
@@ -794,28 +1259,47 @@
 		if (view === "recent") {
 			renderRecentSessionOptions(payload);
 			State.state.rows = prepareRecentRows(enrichedRows);
-			UI.renderRecentGrid(document.getElementById("grid"), State.state.rows);
 			setUrlView("recent");
 		} else if (view === "stats") {
 			renderRecentSessionOptions(null);
 			State.state.rows = combineStatRows(enrichedRows.filter(r =>
 				isStatRow(r) && isStatRowForScope(r, selectedScope())
 			));
-			UI.renderStatGrid(document.getElementById("grid"), State.state.rows);
 		} else {
 			renderRecentSessionOptions(null);
 			const scope = selectedScope();
 			State.state.rows = combineInventoryRows(enrichedRows.filter(r =>
 				isInventoryRowForScope(r, scope) && (scope === "corvette" || !isStatRow(r))
 			));
-			UI.renderGrid(document.getElementById("grid"), State.state.rows);
 		}
+
+		populateViewOptions(State.state.rows);
+		renderVisibleRows();
 	}
 
 	function wireUI() {
 		const tabs = document.getElementById("tabs");
 		const search = document.getElementById("search");
 		const recentSessionSelect = document.getElementById("recentSessionSelect");
+		const viewToggle = document.getElementById("inventoryViewToggle");
+		const viewPanel = document.getElementById("inventoryViewPanel");
+		const viewClose = document.getElementById("inventoryViewClose");
+		const viewSort = document.getElementById("inventoryViewSort");
+		const viewReset = document.getElementById("inventoryViewReset");
+		const viewBulkButtons = document.querySelectorAll("[data-view-bulk][data-view-bulk-action]");
+		const viewCategoryList = document.getElementById("viewCategoryList");
+		const viewGroupSearch = document.getElementById("viewGroupSearch");
+		const viewGroupList = document.getElementById("viewGroupList");
+		const viewTagSearch = document.getElementById("viewTagSearch");
+		const viewTagList = document.getElementById("viewTagList");
+		const viewTypeList = document.getElementById("viewTypeList");
+
+		function setViewPanelOpen(open) {
+			if (!viewPanel || !viewToggle) return;
+			viewPanel.hidden = !open;
+			viewPanel.setAttribute("aria-hidden", open ? "false" : "true");
+			viewToggle.setAttribute("aria-expanded", open ? "true" : "false");
+		}
 
 		on(tabs, "click", (ev) => {
 			const b = ev.target.closest("button[data-scope]");
@@ -838,20 +1322,107 @@
 			loadInventory({ allowAutoSessionAttach: false });
 		});
 
-		on(search, "input", () => {
-			const q = (search.value || "").toLowerCase();
-			const filtered = State.state.rows.filter(r =>
-				(r.display_name || "").toLowerCase().includes(q) ||
-				String(r.resource_id).toLowerCase().includes(q)
-			);
+		on(search, "input", renderVisibleRows);
 
-			if (selectedView() === "recent") {
-				UI.renderRecentGrid(document.getElementById("grid"), filtered);
-			} else if (selectedView() === "stats") {
-				UI.renderStatGrid(document.getElementById("grid"), filtered);
-			} else {
-				UI.renderGrid(document.getElementById("grid"), filtered);
-			}
+		on(viewToggle, "click", () => {
+			setViewPanelOpen(!!viewPanel?.hidden);
+		});
+
+		on(viewClose, "click", () => {
+			setViewPanelOpen(false);
+		});
+
+		on(viewSort, "change", () => {
+			viewPrefs.sort = viewSort.value || VIEW_PREF_DEFAULTS.sort;
+			saveViewPrefs();
+			renderVisibleRows();
+		});
+
+		for (const input of document.querySelectorAll("[data-view-setting]")) {
+			on(input, "change", () => {
+				const key = input.dataset.viewSetting;
+				viewPrefs[key] = !!input.checked;
+				saveViewPrefs();
+				populateViewOptions(State.state.rows);
+				renderVisibleRows();
+			});
+		}
+
+		for (const button of viewBulkButtons) {
+			on(button, "click", () => {
+				const checked = button.dataset.viewBulkAction === "select";
+
+				if (button.dataset.viewBulk === "broad") {
+					setBroadTypeBulk(checked);
+					return;
+				}
+
+				if (button.dataset.viewBulk === "category") {
+					setHiddenValuesForVisibleList(viewCategoryList, "view-category", "hiddenCategories", checked);
+					return;
+				}
+
+				if (button.dataset.viewBulk === "group") {
+					setHiddenValuesForVisibleList(viewGroupList, "view-group", "hiddenGroups", checked);
+					return;
+				}
+
+				if (button.dataset.viewBulk === "tag") {
+					setHiddenValuesForVisibleList(viewTagList, "view-tag", "hiddenTags", checked);
+					return;
+				}
+
+				if (button.dataset.viewBulk === "kind") {
+					setHiddenValuesForVisibleList(viewTypeList, "view-kind", "hiddenKinds", checked);
+				}
+			});
+		}
+
+		function wireHiddenList(list, dataKey, prefKey) {
+			on(list, "change", (ev) => {
+				const selector = `input[data-${dataKey}]`;
+				const input = ev.target.closest(selector);
+				if (!input) return;
+
+				const value = input.dataset[dataKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase())];
+				const hiddenValues = new Set(viewPrefs[prefKey] || []);
+				if (input.checked) {
+					hiddenValues.delete(value);
+				} else {
+					hiddenValues.add(value);
+				}
+
+				viewPrefs[prefKey] = Array.from(hiddenValues).sort((a, b) => viewLabel(a).localeCompare(viewLabel(b)));
+				saveViewPrefs();
+				populateViewOptions(State.state.rows);
+				renderVisibleRows();
+			});
+		}
+
+		wireHiddenList(viewCategoryList, "view-category", "hiddenCategories");
+		wireHiddenList(viewGroupList, "view-group", "hiddenGroups");
+		wireHiddenList(viewTagList, "view-tag", "hiddenTags");
+		wireHiddenList(viewTypeList, "view-kind", "hiddenKinds");
+
+		on(viewGroupSearch, "input", () => {
+			populateViewOptions(State.state.rows);
+		});
+
+		on(viewTagSearch, "input", () => {
+			populateViewOptions(State.state.rows);
+		});
+
+		on(viewReset, "click", () => {
+			viewPrefs = {
+				...VIEW_PREF_DEFAULTS,
+				hiddenCategories: [],
+				hiddenGroups: [],
+				hiddenTags: [],
+				hiddenKinds: [],
+			};
+			saveViewPrefs();
+			populateViewOptions(State.state.rows);
+			renderVisibleRows();
 		});
 	}
 

@@ -256,6 +256,9 @@ function enrich_inventory_rows(array $rows, array $catalogue): array {
             $row['icon_url'] = icon_url_for_row($resourceId, is_string($kind) ? $kind : null);
             $row['source_icon_url'] = is_string($meta['icon'] ?? null) ? $meta['icon'] : null;
             $row['appId'] = $meta['appId'] ?? null;
+            $row['category'] = is_string($meta['category'] ?? null) ? $meta['category'] : null;
+            $row['group'] = is_string($meta['group'] ?? null) ? $meta['group'] : null;
+            $row['tags'] = array_values(array_filter((array)($meta['tags'] ?? []), static fn($tag): bool => is_string($tag) && trim($tag) !== ''));
 
             if (array_key_exists('aliasOf', $meta)) {
                 $row['aliasOf'] = $meta['aliasOf'];
@@ -272,6 +275,9 @@ function enrich_inventory_rows(array $rows, array $catalogue): array {
             $row['kind'] = $kind;
             $row['icon_url'] = icon_url_for_row($resourceId, $kind);
             $row['source_icon_url'] = null;
+            $row['category'] = null;
+            $row['group'] = null;
+            $row['tags'] = [];
         }
     }
     unset($row);

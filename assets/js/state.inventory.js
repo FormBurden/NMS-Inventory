@@ -7,7 +7,7 @@
 		defaultWindow: "character",
 		iconSize: "medium",
 		showNegatives: true,
-		autoRefreshSec: 10,
+		autoRefreshSec: 15,
 		theme: "system",
 		recentFirst: false,
 	};
@@ -20,12 +20,36 @@
 		timer: null,
 	};
 
+	function normalizeSettings(s) {
+		const defaultWindow = String(s.defaultWindow || DEFAULTS.defaultWindow).trim().toLowerCase();
+		const iconSize = String(s.iconSize || DEFAULTS.iconSize).trim().toLowerCase();
+		const theme = String(s.theme || DEFAULTS.theme).trim().toLowerCase();
+		const autoRefreshSec = Number.parseInt(String(s.autoRefreshSec ?? DEFAULTS.autoRefreshSec), 10);
+
+		return {
+			...s,
+			defaultWindow: defaultWindow === "vehicles" || defaultWindow === "exocraft" ? "vehicle" : defaultWindow,
+			iconSize: iconSize === "small" || iconSize === "medium" || iconSize === "large" ? iconSize : DEFAULTS.iconSize,
+			showNegatives: s.showNegatives !== false,
+			autoRefreshSec: Number.isFinite(autoRefreshSec) ? Math.max(0, Math.min(3600, autoRefreshSec)) : DEFAULTS.autoRefreshSec,
+			theme: theme === "system" || theme === "light" || theme === "dark" ? theme : DEFAULTS.theme,
+			recentFirst: s.recentFirst === true,
+		};
+	}
+
+	function shouldUseLightTheme(theme) {
+		if (theme === "light") return true;
+		if (theme === "dark") return false;
+		return !!window.matchMedia?.("(prefers-color-scheme: light)")?.matches;
+	}
+
 	function applyThemeAndIcons(s) {
+		const normalized = normalizeSettings(s || {});
 		document.body.classList.remove("icon-sm", "icon-md", "icon-lg");
 		document.body.classList.add(
-			s.iconSize === "small" ? "icon-sm" : s.iconSize === "large" ? "icon-lg" : "icon-md"
+			normalized.iconSize === "small" ? "icon-sm" : normalized.iconSize === "large" ? "icon-lg" : "icon-md"
 		);
-		document.body.classList.toggle("theme-light", s.theme === "light");
+		document.body.classList.toggle("theme-light", shouldUseLightTheme(normalized.theme));
 	}
 
 	async function loadSettings() {
@@ -37,6 +61,7 @@
 			const payload = await API.fetchJSON(API.ENDPOINTS.settings).catch(() => null);
 			if (payload) state.settings = { ...state.settings, ...(payload.settings || payload) };
 		} catch { }
+		state.settings = normalizeSettings(state.settings);
 		try { localStorage.setItem("nms_settings", JSON.stringify(state.settings)); } catch { }
 		applyThemeAndIcons(state.settings);
 	}

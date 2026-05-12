@@ -7,7 +7,7 @@ declare(strict_types=1);
  *  - Assets/data/developerDetails.json  (App Id -> GameId, Icon DDS, etc.)
  *  - Assets/json/en-us/*.lang.json      (en-US item arrays: Id, Name, Icon, CdnUrl, …)
  *
- * Output schema: { "<GameId>": { id, name, kind, icon, appId } }
+ * Output schema: { "<GameId>": { id, name, kind, icon, appId, category, group, tags } }
  *
  * Usage:
  *   php scripts/build_items_local.php
@@ -83,11 +83,12 @@ foreach ($devRows as $row) {
 }
 
 $aliasCount = applyCatalogueAliases($items);
+$taggedCount = applyItemTags($items);
 
 ksort($items, SORT_STRING | SORT_FLAG_CASE);
 @mkdir(dirname($outFile), 0777, true);
 file_put_contents($outFile, json_encode($items, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
-echo "Wrote " . count($items) . " items (with english names: $withName, aliases: $aliasCount) to $outFile\n";
+echo "Wrote " . count($items) . " items (with english names: $withName, aliases: $aliasCount, tagged: $taggedCount) to $outFile\n";
 
 /* ========================== helpers =========================== */
 
@@ -371,6 +372,192 @@ function addSyntheticItem(array &$items, string $id, string $name, string $kind)
     ];
 
     return 1;
+}
+
+function applyItemTags(array &$items): int {
+    $rules = loadItemTagRules();
+    $tagged = 0;
+
+    foreach ($items as $id => &$row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $meta = inferItemTagMeta((string)$id, $row, $rules);
+        $row['category'] = $meta['category'];
+        $row['group'] = $meta['group'];
+        $row['tags'] = $meta['tags'];
+
+        if ($meta['tags'] !== []) {
+            $tagged++;
+        }
+    }
+    unset($row);
+
+    return $tagged;
+}
+
+function loadItemTagRules(): array {
+    $path = __DIR__ . '/../data/mappings/item_tags.json';
+
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $rules = json_decode(file_get_contents($path), true);
+    if (!is_array($rules)) {
+        fwrite(STDERR, "WARNING: Invalid JSON: $path\n");
+        return [];
+    }
+
+    return $rules;
+}
+
+function inferItemTagMeta(string $id, array $row, array $rules): array {
+    $id = strtoupper(trim($id));
+    $name = strtolower(trim((string)($row['name'] ?? '')));
+    $kind = strtolower(trim((string)($row['kind'] ?? '')));
+
+    $category = categoryFromKind($kind);
+    $group = groupFromCategory($category);
+    $tags = defaultTagsForKind($kind);
+
+    foreach (rulesForKind($rules, $kind) as $rule) {
+        if (!is_array($rule)) {
+            continue;
+        }
+
+        if (!itemTagRuleMatches($id, $name, $rule)) {
+            continue;
+        }
+
+        if (isset($rule['category']) && is_string($rule['category']) && trim($rule['category']) !== '') {
+            $category = trim($rule['category']);
+        }
+
+        if (isset($rule['group']) && is_string($rule['group']) && trim($rule['group']) !== '') {
+            $group = trim($rule['group']);
+        }
+
+        foreach ((array)($rule['tags'] ?? []) as $tag) {
+            if (is_string($tag) && trim($tag) !== '') {
+                $tags[] = trim($tag);
+            }
+        }
+    }
+
+    return [
+        'category' => $category,
+        'group' => $group,
+        'tags' => normalizeTags($tags),
+    ];
+}
+
+function categoryFromKind(string $kind): string {
+    return match ($kind) {
+        'substance' => 'Resource',
+        'product' => 'Product',
+        'technology' => 'Technology',
+        'building' => 'Building',
+        default => 'Unknown',
+    };
+}
+
+function groupFromCategory(string $category): string {
+    return match ($category) {
+        'Resource' => 'Resources',
+        'Product' => 'Products',
+        'Technology' => 'Technology',
+        'Building' => 'Base Building',
+        default => 'Unknown',
+    };
+}
+
+function defaultTagsForKind(string $kind): array {
+    return match ($kind) {
+        'substance' => ['resource', 'substance'],
+        'product' => ['product'],
+        'technology' => ['technology'],
+        'building' => ['building', 'base_part'],
+        default => ['unknown'],
+    };
+}
+
+function rulesForKind(array $rules, string $kind): array {
+    $sections = [];
+
+    if (isset($rules['all']) && is_array($rules['all'])) {
+        $sections[] = $rules['all'];
+    }
+
+    if ($kind !== '' && isset($rules[$kind]) && is_array($rules[$kind])) {
+        $sections[] = $rules[$kind];
+    }
+
+    $out = [];
+    foreach ($sections as $section) {
+        foreach ($section as $rule) {
+            $out[] = $rule;
+        }
+    }
+
+    return $out;
+}
+
+function itemTagRuleMatches(string $id, string $name, array $rule): bool {
+    foreach ((array)($rule['ids'] ?? []) as $candidate) {
+        if (is_string($candidate) && strtoupper(trim($candidate)) === $id) {
+            return true;
+        }
+    }
+
+    foreach ((array)($rule['prefixes'] ?? []) as $prefix) {
+        $prefix = strtoupper(trim((string)$prefix));
+        if ($prefix !== '' && str_starts_with($id, $prefix)) {
+            return true;
+        }
+    }
+
+    foreach ((array)($rule['suffixes'] ?? []) as $suffix) {
+        $suffix = strtoupper(trim((string)$suffix));
+        if ($suffix !== '' && str_ends_with($id, $suffix)) {
+            return true;
+        }
+    }
+
+    foreach ((array)($rule['name_contains'] ?? []) as $needle) {
+        $needle = strtolower(trim((string)$needle));
+        if ($needle !== '' && str_contains($name, $needle)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function normalizeTags(array $tags): array {
+    $out = [];
+    $seen = [];
+
+    foreach ($tags as $tag) {
+        $tag = strtolower(trim((string)$tag));
+        if ($tag === '') {
+            continue;
+        }
+
+        $tag = preg_replace('/[^a-z0-9]+/', '_', $tag);
+        $tag = trim((string)$tag, '_');
+
+        if ($tag === '' || isset($seen[$tag])) {
+            continue;
+        }
+
+        $seen[$tag] = true;
+        $out[] = $tag;
+    }
+
+    sort($out, SORT_STRING);
+    return $out;
 }
 
 function applyBuildingCatalogueSeeds(array &$items): int {
